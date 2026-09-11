@@ -27,4 +27,4 @@
 
 ## 下载
 
-最新 APK 见 [Releases](https://github.com/lelecz/ReReply/releases)。
+最新 APK 见 [Releases](https://github.com/lelecz/nitian/releases)。
