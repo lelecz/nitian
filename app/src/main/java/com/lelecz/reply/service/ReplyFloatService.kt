@@ -204,11 +204,26 @@ class ReplyFloatService : Service() {
         return TextView(this).apply {
             this.text = text
             textSize = 14f
-            setTextColor(0xFF1F2937.toInt())
+            setTextColor(0xFF5A4A52.toInt())
             setPadding(28, 18, 28, 18)
             setBackgroundResource(R.drawable.bg_reply_item)
             if (clickable) {
                 typeface = Typeface.DEFAULT_BOLD
+                // Q弹按压：按下轻微缩小，松开回弹
+                setOnTouchListener { v, e ->
+                    when (e.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            v.animate().scaleX(0.94f).scaleY(0.94f).setDuration(80).start()
+                            false
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            v.animate().scaleX(1f).scaleY(1f).setDuration(200)
+                                .setInterpolator(android.view.animation.OvershootInterpolator(1.5f)).start()
+                            false
+                        }
+                        else -> false
+                    }
+                }
                 setOnClickListener {
                     NotifyAccessibilityService.sendReply(text)
                 }

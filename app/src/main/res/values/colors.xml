@@ -3,4 +3,18 @@
     <color name="ic_launcher_bg">#FAD7DF</color>
     <color name="float_bg">#E6FFFFFF</color>
     <color name="float_border">#3B82F6</color>
+
+    <!-- Q弹马卡龙色系 -->
+    <color name="mac_pink">#FF8FAB</color>
+    <color name="mac_pink_dark">#F06E94</color>
+    <color name="mac_pink_soft">#FFE3EC</color>
+    <color name="mac_pink_bg">#FFF5F8</color>
+    <color name="mac_purple">#B8A9F0</color>
+    <color name="mac_purple_dark">#9D8AE8</color>
+    <color name="mac_blue">#8EC9F0</color>
+    <color name="mac_blue_dark">#6FB4E8</color>
+    <color name="mac_text">#5A4A52</color>
+    <color name="mac_text_light">#9B8A92</color>
+    <color name="mac_card">#FFFDFE</color>
+    <color name="mac_border">#FFD9E3</color>
 </resources>

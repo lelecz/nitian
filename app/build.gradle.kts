@@ -11,8 +11,8 @@ android {
         applicationId = "com.lelecz.reply"
         minSdk = 26          // 安卓 8.0
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 20
+        versionName = "1.1.1"
     }
 
     buildTypes {
