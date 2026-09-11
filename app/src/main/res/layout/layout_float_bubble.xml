@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/float_container"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_float_bubble"
+    android:elevation="8dp"
+    android:padding="14dp"
+    android:minWidth="220dp"
+    android:maxWidth="320dp">
+
+    <LinearLayout
+        android:id="@+id/float_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#08000000"
+        android:padding="4dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="≣ 拖我 · 群友说："
+            android:textColor="#9CA3AF"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/float_close"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=" ✕ "
+            android:textColor="#EF4444"
+            android:textSize="16sp"
+            android:padding="4dp" />
+
+        <TextView
+            android:id="@+id/float_refresh"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=" 🔄 "
+            android:textColor="#3B82F6"
+            android:textSize="16sp"
+            android:padding="4dp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/float_last_msg"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#1F2937"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:paddingTop="4dp"
+        android:paddingBottom="10dp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#E5E7EB" />
+
+    <LinearLayout
+        android:id="@+id/float_replies"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="8dp" />
+
+</LinearLayout>

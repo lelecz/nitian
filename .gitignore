@@ -1,0 +1,11 @@
+# Gradle
+.gradle/
+build/
+.kotlin/
+# 本地配置（含本机 SDK 路径等，勿上传）
+local.properties
+# IDE
+.idea/
+*.iml
+# 系统
+.DS_Store
