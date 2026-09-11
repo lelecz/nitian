@@ -57,6 +57,13 @@ class SettingsActivity : AppCompatActivity() {
             else
                 "🌸 屏幕截图（可选）· 未授权（不影响主功能）"
         }
+        // 刷新无障碍守护状态
+        findViewById<Button>(R.id.guardBtn)?.let {
+            it.text = if (com.lelecz.reply.service.AccessibilityGuard.isEnabled(this))
+                "🛡️ 无障碍守护 · 运行中 ✓"
+            else
+                "🛡️ 无障碍守护 · 已关闭（点我开启）"
+        }
         // OCR 授权发起后 4 秒内回到前台却没收到结果 → 系统不支持，提示跳过
         if (System.currentTimeMillis() - lastOcrClickTime < 4000 &&
             !com.lelecz.reply.service.OcrManager.isAuthorized()
@@ -215,6 +222,34 @@ class SettingsActivity : AppCompatActivity() {
         // ── 卡片4：权限与工具 ──
         val card4 = card()
         card4.addView(sectionTitle("⚙️ 权限与工具"))
+
+        // 无障碍守护：状态 + 一键开启 + 防清理引导
+        val guardBtn = qBtn("🛡️ 无障碍守护 · 检查中…", false, blue = true)
+        guardBtn.id = R.id.guardBtn
+        guardBtn.setOnClickListener {
+            val enabled = com.lelecz.reply.service.AccessibilityGuard.isEnabled(this)
+            if (enabled) {
+                // 已开启：弹出防清理引导（vivo/小米等 ROM 会后台清理）
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("🛡️ 无障碍守护 · 运行中")
+                    .setMessage(
+                        "服务正常！\n\n但部分系统会后台自动清理，建议做防清理设置：\n\n" +
+                            com.lelecz.reply.service.AccessibilityGuard.romGuide() +
+                            "\n\n点\"去设置\"可直达本应用的详情页："
+                    )
+                    .setPositiveButton("去设置", { _, _ ->
+                        com.lelecz.reply.service.AccessibilityGuard.openAppSettings(this)
+                    })
+                    .setNegativeButton("知道了", null)
+                    .show()
+            } else {
+                // 被关了：一键跳转无障碍设置
+                Toast.makeText(this, "正在打开无障碍设置，找到\"逆天回复\"打开开关", Toast.LENGTH_LONG).show()
+                ReplyFloatService.hide(this)
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+        }
+        card4.addView(guardBtn, lp())
 
         val permissionBtn = qBtn("🔓 开启无障碍服务", false, blue = true)
         permissionBtn.setOnClickListener {

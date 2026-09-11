@@ -317,6 +317,16 @@ class NotifyAccessibilityService : AccessibilityService() {
         aiJob?.cancel()
         scope.cancel()
         clearSendTargets()
+        // 被系统/ROM 关闭时，稍后检查并通知用户一键恢复（用户主动关闭也会提示，可忽略）
+        val wasEnabled = settings.serviceEnabled
+        val appCtx = applicationContext
         super.onDestroy()
+        if (wasEnabled) {
+            mainHandler.postDelayed({
+                try {
+                    AccessibilityGuard.notifyIfClosed(appCtx)
+                } catch (_: Exception) {}
+            }, 3000)
+        }
     }
 }

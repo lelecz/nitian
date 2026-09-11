@@ -78,6 +78,26 @@ class ReplyFloatService : Service() {
         super.onCreate()
         instance = this
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        startAccessibilityGuard()
+    }
+
+    // ── 无障碍守护：每 45 秒检查一次，被系统关了立刻通知引导恢复 ──
+    private val guardJob = object : Runnable {
+        override fun run() {
+            try {
+                AccessibilityGuard.notifyIfClosed(this@ReplyFloatService)
+            } catch (_: Exception) {}
+            mainHandler.postDelayed(this, 45_000)
+        }
+    }
+
+    private fun startAccessibilityGuard() {
+        mainHandler.removeCallbacks(guardJob)
+        mainHandler.post(guardJob)
+    }
+
+    private fun stopAccessibilityGuard() {
+        mainHandler.removeCallbacks(guardJob)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -245,6 +265,7 @@ class ReplyFloatService : Service() {
     }
 
     override fun onDestroy() {
+        stopAccessibilityGuard()
         hideBubble()
         if (instance === this) instance = null
         super.onDestroy()

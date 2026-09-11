@@ -16,6 +16,13 @@ class BootReceiver : BroadcastReceiver() {
                         .setAction(ReplyFloatService.ACTION_HIDE)
                 )
             } catch (_: Exception) {}
+            // 延迟 10 秒检查无障碍：开机被 ROM 关了 → 通知引导恢复
+            try {
+                val appCtx = context.applicationContext
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    AccessibilityGuard.notifyIfClosed(appCtx)
+                }, 10_000)
+            } catch (_: Exception) {}
         }
     }
 }
