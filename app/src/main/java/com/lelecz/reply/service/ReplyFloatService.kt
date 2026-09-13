@@ -183,7 +183,7 @@ class ReplyFloatService : Service() {
                             x = (initialX + dx).toInt()
                             y = (initialY + dy).toInt()
                         }
-                        try { wm.updateViewLayout(v, layoutParams) } catch (_: Exception) {}
+                        try { wm.updateViewLayout(view, layoutParams) } catch (_: Exception) {}
                     }
                     true
                 }

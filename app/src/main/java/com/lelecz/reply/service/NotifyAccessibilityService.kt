@@ -13,6 +13,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.lelecz.reply.ai.AiClient
 import com.lelecz.reply.data.SettingsStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,6 +41,8 @@ class NotifyAccessibilityService : AccessibilityService() {
     private var lastContentHash: String = ""
     private var lastTriggerTime: Long = 0
     private var aiJob: Job? = null
+    /** 延迟读屏任务（与 AI 请求分开，避免互相 cancel） */
+    private var readJob: Job? = null
 
     /** 当前上下文（供刷新按钮重生成用） */
     private var currentContext: List<String> = emptyList()
@@ -104,9 +107,9 @@ class NotifyAccessibilityService : AccessibilityService() {
 
     private fun scheduleRead(delayMs: Long) {
         val now = System.currentTimeMillis()
-        if (now - lastTriggerTime < 1500) return  // 节流 1.5s
-        aiJob?.cancel()
-        aiJob = scope.launch {
+        if (now - lastTriggerTime < 1000) return  // 节流 1s
+        readJob?.cancel()
+        readJob = scope.launch {
             delay(delayMs)
             readScreenAndTrigger()
         }
@@ -155,8 +158,8 @@ class NotifyAccessibilityService : AccessibilityService() {
         // 自己发送的过滤
         if (latest == lastSentByUs) return
 
-        // 去重：最近 3 条内容的哈希
-        val hashKey = snap.lines.takeLast(3).joinToString("|").hashCode().toString()
+        // 去重：只比最新一条消息的内容（新消息来了最新一条肯定变）
+        val hashKey = latest.hashCode().toString()
         if (hashKey == lastContentHash) return
         lastContentHash = hashKey
         lastTriggerTime = System.currentTimeMillis()
@@ -181,6 +184,7 @@ class NotifyAccessibilityService : AccessibilityService() {
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) return@launch // 正常取消（新消息覆盖），静默不显示
                 mainHandler.post {
                     ReplyFloatService.show(
                         this@NotifyAccessibilityService,
@@ -214,6 +218,7 @@ class NotifyAccessibilityService : AccessibilityService() {
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) return@launch // 正常取消，静默不显示
                 mainHandler.post {
                     ReplyFloatService.show(
                         this@NotifyAccessibilityService,
@@ -315,6 +320,7 @@ class NotifyAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         instance = null
         aiJob?.cancel()
+        readJob?.cancel()
         scope.cancel()
         clearSendTargets()
         // 被系统/ROM 关闭时，稍后检查并通知用户一键恢复（用户主动关闭也会提示，可忽略）

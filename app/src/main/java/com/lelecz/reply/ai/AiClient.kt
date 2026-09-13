@@ -48,7 +48,7 @@ class AiClient(private val settings: SettingsStore) {
                 .put(JSONObject().put("role", "system").put("content", prompt.system))
                 .put(JSONObject().put("role", "user").put("content", prompt.user)))
             .put("temperature", 0.95)
-            .put("max_tokens", 200)
+            .put("max_tokens", 10000)
 
         val url = settings.baseUrl.trimEnd('/') + "/chat/completions"
         val request = Request.Builder()
@@ -65,25 +65,54 @@ class AiClient(private val settings: SettingsStore) {
                 throw Exception("HTTP ${resp.code}: ${errBody.take(120)}")
             }
             val body = resp.body?.string() ?: ""
+            android.util.Log.e("AiClient", "原始返回: ${body.take(500)}")
             parseReplies(body)
         }
     }
 
     private fun parseReplies(body: String): List<String> {
-        val json = JSONObject(body)
+        val json = try { JSONObject(body) } catch (e: Exception) {
+            return listOf("[返回非JSON] ${body.take(120)}")
+        }
         val content = json.optJSONArray("choices")
             ?.optJSONObject(0)
             ?.optJSONObject("message")
             ?.optString("content", "")
-            ?: return emptyList()
+
+        if (content == null) {
+            // 可能是 error 响应
+            val err = json.optString("error", "")
+            return listOf("[API错误] ${err.ifEmpty { body.take(120) }}")
+        }
+        if (content.isBlank()) {
+            return listOf("[模型返回空内容] 检查模型名/余额/API权限")
+        }
+
+        android.util.Log.e("AiClient", "模型content: ${content.take(300)}")
 
         // 期望模型输出用换行或序号分隔的多条建议；逐行清洗
-        return content.split("\n")
+        val lines = content.split("\n")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .map { it.replace(Regex("^\\d+[.、)]\\s*"), "").trim() }
-            .filter { it.isNotBlank() && it.length <= 60 }
-            .take(3)
+            .filter { it.isNotBlank() }
+
+        // 过滤掉过长的行（超过 80 字的可能是模型的解释文字）
+        val replies = lines.filter { it.length <= 80 }.take(3)
+
+        // 兜底：按行解析不到时，按标点拆成短句
+        if (replies.size < 2) {
+            val fallback = content
+                .replace(Regex("[。！？!?；;]"), "$0|")
+                .split("|")
+                .map { it.trim() }
+                .filter { it.isNotBlank() && it.length <= 80 }
+                .take(3)
+            if (fallback.isNotEmpty()) return fallback
+            // 终极兜底：原始内容截断为一条（用户能看到模型到底返回了啥）
+            return listOf("[原始返回] ${content.take(120)}")
+        }
+        return replies
     }
 }
 
