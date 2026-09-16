@@ -1,0 +1,22 @@
+# Gradle
+.gradle/
+build/
+
+# Android / IDE
+*.iml
+.idea/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+app/build/
+
+# 签名文件（可选保留，这里保留以保证签名一致）
+# release.keystore
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log

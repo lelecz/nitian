@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 悬浮窗小按钮按压反馈（RippleDrawable，不依赖主题属性，Service Context 可安全使用） -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#409B8AE8">
+    <!-- 点击涟漪范围遮罩 -->
+    <item android:id="@android:id/mask">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+    <!-- 默认背景：轻微圆角底色 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#14B8A9F0" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+</ripple>

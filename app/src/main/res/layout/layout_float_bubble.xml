@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/float_container"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_float_bubble"
+    android:elevation="8dp"
+    android:padding="16dp"
+    android:minWidth="230dp"
+    android:maxWidth="330dp">
+
+    <LinearLayout
+        android:id="@+id/float_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#00000000"
+        android:padding="2dp"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/float_drag_handle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🐱 拖我 · 群友说："
+            android:textColor="#E86A92"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:paddingVertical="6dp" />
+
+        <TextView
+            android:id="@+id/float_refresh"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔄 刷新"
+            android:textColor="#B08CF0"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="6dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="@drawable/bg_float_btn_ripple" />
+
+        <TextView
+            android:id="@+id/float_close"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✕"
+            android:textColor="#F0809F"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="6dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="@drawable/bg_float_btn_ripple" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/float_last_msg"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#5A4A52"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:paddingTop="4dp"
+        android:paddingBottom="10dp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#F5D6E0" />
+
+    <LinearLayout
+        android:id="@+id/float_replies"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="8dp" />
+
+</LinearLayout>
