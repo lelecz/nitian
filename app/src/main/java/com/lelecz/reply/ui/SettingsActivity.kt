@@ -246,6 +246,23 @@ class SettingsActivity : AppCompatActivity() {
         }
         card2.addView(flirtyBar, lp())
 
+        val toxicLabel = TextView(this).apply {
+            text = "😏 毒舌程度：${settings.toxic} / 10"
+            textSize = 14f; setTextColor(cText)
+        }
+        card2.addView(toxicLabel)
+        val toxicBar = qSeekBar().apply {
+            max = 9; progress = settings.toxic - 1
+            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) {
+                    toxicLabel.text = "😏 毒舌程度：${p + 1} / 10"
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+        }
+        card2.addView(toxicBar, lp())
+
         // ── 人设包选择 ──
         card2.addView(sectionTitle("🎭 人设包"))
         val personaDesc = TextView(this).apply {
@@ -443,6 +460,7 @@ class SettingsActivity : AppCompatActivity() {
             settings.serviceEnabled = serviceSwitch.isChecked
             settings.craziness = crazyBar.progress + 1
             settings.flirty = flirtyBar.progress + 1
+            settings.toxic = toxicBar.progress + 1
             Toast.makeText(this, "✨ 已保存，喵~", Toast.LENGTH_SHORT).show()
         }
 

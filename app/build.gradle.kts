@@ -6,14 +6,14 @@ plugins {
 android {
     namespace = "com.lelecz.reply"
     compileSdk = 35
-    buildToolsVersion = "35.0.0"
+    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         applicationId = "com.lelecz.reply"
         minSdk = 26          // 安卓 8.0
         targetSdk = 35
-        versionCode = 23
-        versionName = "1.2.0"
+        versionCode = 24
+        versionName = "1.3.0"
     }
 
     // 专属签名配置：debug 和 release 共用同一套签名，保证每次构建签名一致

@@ -44,6 +44,11 @@ class SettingsStore(context: Context) {
         get() = sp.getInt("flirty", 2)
         set(v) = sp.edit().putInt("flirty", v.coerceIn(1, 10)).apply()
 
+    /** 毒舌程度 1~10（吐槽/讽刺/阴阳怪气的强度） */
+    var toxic: Int
+        get() = sp.getInt("toxic", 2)
+        set(v) = sp.edit().putInt("toxic", v.coerceIn(1, 10)).apply()
+
     /** 人设包 id（normal/catgirl/yandere/brat/eagle） */
     var persona: String
         get() = sp.getString("persona", "normal") ?: "normal"

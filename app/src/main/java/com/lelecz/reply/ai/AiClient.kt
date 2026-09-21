@@ -38,6 +38,7 @@ class AiClient(private val settings: SettingsStore) {
         val prompt = PromptBuilder.build(
             craziness = settings.craziness,
             flirty = settings.flirty,
+            toxic = settings.toxic,
             persona = Persona.fromId(settings.persona),
             chatContext = chatContext,
             lastMessage = lastMessage
@@ -124,9 +125,10 @@ data class BuiltPrompt(val system: String, val user: String)
  */
 object PromptBuilder {
 
-    fun build(craziness: Int, flirty: Int, persona: Persona = Persona.NORMAL, chatContext: List<String>, lastMessage: String): BuiltPrompt {
+    fun build(craziness: Int, flirty: Int, toxic: Int = 2, persona: Persona = Persona.NORMAL, chatContext: List<String>, lastMessage: String): BuiltPrompt {
         val crazy = craziness.coerceIn(1, 5)
         val flirt = flirty.coerceIn(1, 10)
+        val tox = toxic.coerceIn(1, 10)
 
         // 抽象逆天等级描述
         val crazyDesc = when (crazy) {
@@ -151,6 +153,20 @@ object PromptBuilder {
             else -> "撩人天花板：挑逗、撩拨、暧昧暗示全开，字字带着电流，让人招架不住。"
         }
 
+        // 毒舌等级描述（1~10）
+        val toxicDesc = when (tox) {
+            1 -> "完全不毒舌：语气友善温暖，纯夸不损。"
+            2 -> "偶尔轻微吐槽，点到为止，不伤和气。"
+            3 -> "会阴阳怪气一小下，带点小讽刺但很可爱。"
+            4 -> "毒舌上线：经常调侃、拆台、翻白眼，但还是朋友间的玩笑。"
+            5 -> "嘴上不饶人：高频吐槽、戳痛点、话里带刺，笑里藏刀。"
+            6 -> "毒舌加重：讽刺升级，喜欢用反讽和夸张比喻损人，让人又气又笑。"
+            7 -> "嘴毒心不毒：句句扎心但有分寸，损完还会偷偷补一句软话。"
+            8 -> "毒舌全开：密集输出讽刺、阴阳怪气、反向夸奖，让人血压拉满。"
+            9 -> "极度毒舌：话里带刀、句句扎心，主打一个「扎完你还得谢谢我」。"
+            else -> "毒舌天花板：嘲讽、阴阳、反讽、挖苦全拉满，损人不带脏字但刀刀见血。"
+        }
+
         val personaAppend = if (persona.systemAppend.isNotBlank()) "\n\n${persona.systemAppend}" else ""
 
         val system = """
@@ -158,10 +174,11 @@ object PromptBuilder {
             要求：
             1. $crazyDesc
             2. $flirtDesc
-            3. 每条回复不超过 40 字，口语化，像真人打字，不要有"作为AI""好的呢"这类机器感。
-            4. 不要客套、不要解释，直接给 3 条回复，每条一行。
-            5. 适当使用 emoji，但不要每个都用。
-            6. 暧昧挑逗要含蓄风趣有分寸，绝不低俗下流，不做露骨描写。$personaAppend
+            3. $toxicDesc
+            4. 每条回复不超过 40 字，口语化，像真人打字，不要有"作为AI""好的呢"这类机器感。
+            5. 不要客套、不要解释，直接给 3 条回复，每条一行。
+            6. 适当使用 emoji，但不要每个都用。
+            7. 暧昧挑逗要含蓄风趣有分寸，绝不低俗下流，不做露骨描写；毒舌也要有底线，不人身攻击、不揭伤疤、不骂脏话。$personaAppend
         """.trimIndent()
 
         val user = buildString {
