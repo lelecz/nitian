@@ -144,9 +144,7 @@ class NotifyAccessibilityService : AccessibilityService() {
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 val pkg = event.packageName?.toString() ?: return
-                val isChat = pkg.contains("mobileqq", true) ||
-                    pkg.contains("weixin", true) || pkg.contains("wechat", true)
-                if (isChat) {
+                if (ScreenReader.isChatPackage(pkg)) {
                     // 聊天界面内容变化（新消息/滚动）：节流读取
                     scheduleRead(800)
                 }
@@ -292,14 +290,38 @@ class NotifyAccessibilityService : AccessibilityService() {
         clearSendTargets()
         val root = rootInActiveWindow ?: return
         try {
-            lastEditNode = findNode(root) { n ->
-                n.className?.toString()?.contains("EditText") == true
+            // 输入框：找所有 EditText，优先选屏幕底部的（聊天输入框通常在底部）
+            val edits = mutableListOf<AccessibilityNodeInfo>()
+            findAllNodes(root) { n ->
+                n.className?.toString()?.contains("EditText") == true && n.isEditable
+            }.let { edits.addAll(it) }
+            if (edits.isNotEmpty()) {
+                lastEditNode = edits.maxByOrNull { n ->
+                    val r = Rect(); n.getBoundsInScreen(r); r.centerY()
+                }
             }
+            // 发送按钮：匹配"发送"/"Send"，优先找可点击的
             lastSendNode = findNode(root) { n ->
-                (n.text?.toString()?.contains("发送") == true) ||
-                    (n.contentDescription?.toString()?.contains("发送") == true)
+                val text = n.text?.toString() ?: ""
+                val desc = n.contentDescription?.toString() ?: ""
+                (text.contains("发送", true) || text.contains("send", true) ||
+                    desc.contains("发送", true) || desc.contains("send", true)) &&
+                    (n.isClickable || n.parent?.isClickable == true)
             }
         } catch (_: Exception) {}
+    }
+
+    private fun findAllNodes(root: AccessibilityNodeInfo, predicate: (AccessibilityNodeInfo) -> Boolean): List<AccessibilityNodeInfo> {
+        val result = mutableListOf<AccessibilityNodeInfo>()
+        val stack = mutableListOf(root)
+        while (stack.isNotEmpty()) {
+            val node = stack.removeAt(stack.size - 1)
+            if (predicate(node)) result.add(node)
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { stack.add(it) }
+            }
+        }
+        return result
     }
 
     private fun findNode(root: AccessibilityNodeInfo, predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {

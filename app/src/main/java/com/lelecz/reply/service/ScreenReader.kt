@@ -15,16 +15,32 @@ object ScreenReader {
         val latest: String
     )
 
+    /** 支持的聊天软件包名关键词 */
+    private val CHAT_PACKAGES = listOf(
+        "mobileqq",        // QQ
+        "tencent.mobileqq", // QQ 国际版/其他
+        "weixin",          // 微信
+        "wechat",          // 微信海外版
+        "aweme",           // 抖音
+        "ugc.aweme",       // 抖音
+        "gifmaker",        // 快手
+        "kuaishou"         // 快手其他版本
+    )
+
+    /** 判断是否为支持的聊天软件包名（公开，供 Service 层复用） */
+    fun isChatPackage(pkg: String): Boolean {
+        // 排除 QQ 音乐等非聊天应用
+        if (pkg.contains("qqmusic", true)) return false
+        return CHAT_PACKAGES.any { pkg.contains(it, true) }
+    }
+
     /**
      * 从无障碍根节点提取聊天上下文。
      * @return null = 当前不是可识别的聊天界面（无消息列表）
      */
     fun readChat(root: AccessibilityNodeInfo): ChatSnapshot? {
         val pkg = root.packageName?.toString() ?: return null
-        val isChat = pkg.contains("mobileqq", true) ||
-            pkg.contains("qq", true) && !pkg.contains("qqmusic") ||
-            pkg.contains("weixin", true) || pkg.contains("wechat", true)
-        if (!isChat) return null
+        if (!isChatPackage(pkg)) return null
 
         // 找消息列表容器
         val list = findListContainer(root) ?: return null
