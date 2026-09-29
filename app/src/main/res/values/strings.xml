@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">逆天回复</string>
+    <string name="accessibility_desc">读取群聊消息并生成建议回复，点击悬浮窗自动发送。无需 root。</string>
+    <string name="settings_title">逆天回复设置</string>
+</resources>
