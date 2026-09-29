@@ -37,6 +37,7 @@ class NotifyAccessibilityService : AccessibilityService() {
 
     private lateinit var settings: SettingsStore
     private lateinit var aiClient: AiClient
+    private lateinit var stats: com.lelecz.reply.data.StatsManager
 
     /** CPU 唤醒锁：防止切应用/息屏时系统进入 Doze 导致无障碍被挂起 */
     private var wakeLock: PowerManager.WakeLock? = null
@@ -80,7 +81,8 @@ class NotifyAccessibilityService : AccessibilityService() {
         super.onCreate()
         instance = this
         settings = SettingsStore(this)
-        aiClient = AiClient(settings)
+        stats = com.lelecz.reply.data.StatsManager(this)
+        aiClient = AiClient(settings, stats)
     }
 
     override fun onServiceConnected() {
@@ -337,6 +339,8 @@ class NotifyAccessibilityService : AccessibilityService() {
 
     private fun doSend(text: String) {
         lastSentByUs = text
+        // 记录一次回复（发送或复制都算）
+        stats.recordReply(settings.persona)
         if (!settings.autoSend) {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("reply", text))

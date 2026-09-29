@@ -29,6 +29,14 @@ import com.lelecz.reply.ai.AiClient
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var settings: SettingsStore
+    private lateinit var stats: com.lelecz.reply.data.StatsManager
+    private lateinit var backup: com.lelecz.reply.data.BackupManager
+
+    /** SAF 请求码 */
+    private val REQUEST_EXPORT = 2001
+    private val REQUEST_IMPORT = 2002
+    /** 导出时缓存的 JSON 文本 */
+    private var pendingBackupJson: String? = null
 
     // Q弹配色
     private val cPink = 0xFFFF8FAB.toInt()
@@ -44,6 +52,8 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settings = SettingsStore(this)
+        stats = com.lelecz.reply.data.StatsManager(this)
+        backup = com.lelecz.reply.data.BackupManager(this, settings, stats)
         setContentView(buildUi())
     }
 
@@ -442,6 +452,37 @@ class SettingsActivity : AppCompatActivity() {
         card4.addView(crashBtn, lp())
         container.addView(card4)
 
+        // ── 卡片5：数据与备份 ──
+        val card5 = card()
+        card5.addView(sectionTitle("📊 数据与备份"))
+
+        val statsBtn = qBtn("📈 查看用量统计", false)
+        statsBtn.setOnClickListener { showStatsDialog() }
+        card5.addView(statsBtn, lp())
+
+        val exportBtn = qBtn("📤 导出设置（备份到文件）", false, blue = true)
+        exportBtn.setOnClickListener { startExport() }
+        card5.addView(exportBtn, lp())
+
+        val importBtn = qBtn("📥 导入设置（从备份恢复）", false, blue = true)
+        importBtn.setOnClickListener { startImport() }
+        card5.addView(importBtn, lp())
+
+        val clearStatsBtn = qBtn("🧹 清空用量统计", false)
+        clearStatsBtn.setOnClickListener {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("清空统计")
+                .setMessage("确定清空所有用量统计数据吗？（不影响你的设置）")
+                .setPositiveButton("清空") { _, _ ->
+                    stats.clear()
+                    Toast.makeText(this, "统计已清空", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+        card5.addView(clearStatsBtn, lp())
+        container.addView(card5)
+
         // 保存按钮逻辑（放在所有输入控件声明之后）
         saveBtn.setOnClickListener {
             val key = keyInput.text.toString().trim()
@@ -631,6 +672,101 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+    // ─────────── 用量统计 ───────────
+
+    private fun showStatsDialog() {
+        val sb = StringBuilder()
+        sb.append("今日回复：${stats.todayReplies()} 条\n")
+        sb.append("累计回复：${stats.totalReplies()} 条\n")
+        sb.append("累计 token：${"%,d".format(stats.totalTokensConsumed())}\n")
+
+        // 最近 7 天条形图
+        sb.append("\n最近 7 天：\n")
+        val days = stats.recentDays(7)
+        val maxCount = (days.maxOfOrNull { it.second } ?: 0).coerceAtLeast(1)
+        days.forEach { (label, count) ->
+            val barLen = if (maxCount > 0) (count.toFloat() / maxCount * 10).toInt() else 0
+            val bar = "█".repeat(barLen)
+            sb.append(String.format("%s %3d %s\n", label, count, bar))
+        }
+
+        // 人设分布 top 5
+        val personaStats = stats.allPersonaStats().take(5)
+        if (personaStats.isNotEmpty()) {
+            sb.append("\n常用人设：\n")
+            personaStats.forEach { (id, count) ->
+                val p = Persona.fromId(id)
+                sb.append("${p.emoji} ${p.label}：$count 次\n")
+            }
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("📈 用量统计")
+            .setMessage(sb.toString())
+            .setPositiveButton("关闭", null)
+            .show()
+    }
+
+    // ─────────── 设置导出 / 导入 ───────────
+
+    private fun startExport() {
+        val json = backup.buildBackupJson(includeStats = true)
+        pendingBackupJson = json
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_TITLE, com.lelecz.reply.data.BackupManager.DEFAULT_FILENAME)
+        }
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_EXPORT)
+        } catch (e: Exception) {
+            Toast.makeText(this, "无法打开文件选择器：${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun startImport() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            type = "application/json"
+            addCategory(Intent.CATEGORY_OPENABLE)
+        }
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_IMPORT)
+        } catch (e: Exception) {
+            Toast.makeText(this, "无法打开文件选择器：${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** 把导出 JSON 写入用户选择的 uri */
+    private fun writeBackupToUri(uri: android.net.Uri) {
+        val json = pendingBackupJson ?: return
+        try {
+            contentResolver.openOutputStream(uri)?.use { os ->
+                os.write(json.toByteArray(Charsets.UTF_8))
+            }
+            Toast.makeText(this, "✅ 设置已导出", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "导出失败：${e.message}", Toast.LENGTH_LONG).show()
+        } finally {
+            pendingBackupJson = null
+        }
+    }
+
+    /** 从用户选择的 uri 读取备份并恢复 */
+    private fun readBackupFromUri(uri: android.net.Uri) {
+        try {
+            val json = contentResolver.openInputStream(uri)?.use { ins ->
+                ins.readBytes().toString(Charsets.UTF_8)
+            } ?: throw Exception("读不到文件内容")
+            val result = backup.restoreFromJson(json)
+            Toast.makeText(this, "✅ $result，请重新打开页面刷新", Toast.LENGTH_LONG).show()
+            // 重建页面以反映恢复的设置
+            recreate()
+        } catch (e: Exception) {
+            Toast.makeText(this, "导入失败：${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     // ─────────── 诊断（保留原逻辑） ───────────
 
     /** 诊断：列出所有可能产生悬浮窗的应用 + 已开启的无障碍服务 */
@@ -682,6 +818,21 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        com.lelecz.reply.service.OcrManager.onActivityResult(requestCode, resultCode, data)
+        when (requestCode) {
+            REQUEST_EXPORT -> {
+                if (resultCode == RESULT_OK) {
+                    data?.data?.let { writeBackupToUri(it) }
+                } else {
+                    pendingBackupJson = null
+                }
+            }
+            REQUEST_IMPORT -> {
+                if (resultCode == RESULT_OK) {
+                    data?.data?.let { readBackupFromUri(it) }
+                }
+            }
+            else -> com.lelecz.reply.service.OcrManager
+                .onActivityResult(requestCode, resultCode, data)
+        }
     }
 }

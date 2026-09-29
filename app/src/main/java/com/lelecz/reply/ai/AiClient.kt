@@ -15,7 +15,10 @@ import java.util.concurrent.TimeUnit
  * OpenAI 兼容接口客户端（支持商汤、火山引擎、智谱、DeepSeek、通义千问等所有兼容 OpenAI 格式的 API）。
  * 用法：设置页填 API Key + Base URL + 模型名 → generate 生成 3 条建议回复。
  */
-class AiClient(private val settings: SettingsStore) {
+class AiClient(
+    private val settings: SettingsStore,
+    private val stats: com.lelecz.reply.data.StatsManager? = null
+) {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -76,6 +79,16 @@ class AiClient(private val settings: SettingsStore) {
         val json = try { JSONObject(body) } catch (e: Exception) {
             return listOf("[返回非JSON] ${body.take(120)}")
         }
+
+        // 记录 token 用量（OpenAI 兼容接口的 usage.total_tokens）
+        try {
+            val usage = json.optJSONObject("usage")
+            if (usage != null) {
+                val total = usage.optInt("total_tokens", 0)
+                if (total > 0) stats?.recordTokens(total)
+            }
+        } catch (_: Exception) {}
+
         val content = json.optJSONArray("choices")
             ?.optJSONObject(0)
             ?.optJSONObject("message")

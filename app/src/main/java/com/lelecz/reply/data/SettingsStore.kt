@@ -68,4 +68,22 @@ class SettingsStore(context: Context) {
     var lastChatPackage: String
         get() = sp.getString("last_chat_pkg", "") ?: ""
         set(v) = sp.edit().putString("last_chat_pkg", v).apply()
+
+    /** 导出全部设置为 Map（用于备份） */
+    fun exportAll(): Map<String, Any?> = sp.all
+
+    /** 从 Map 导入设置（合并写入） */
+    fun importAll(data: Map<String, Any?>) {
+        val ed = sp.edit()
+        data.forEach { (k, v) ->
+            when (v) {
+                is String -> ed.putString(k, v)
+                is Int -> ed.putInt(k, v)
+                is Boolean -> ed.putBoolean(k, v)
+                is Long -> ed.putLong(k, v)
+                is Float -> ed.putFloat(k, v)
+            }
+        }
+        ed.apply()
+    }
 }
