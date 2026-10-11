@@ -6,12 +6,11 @@ package com.lelecz.reply.ai
  *
  * 排列顺序：默认 → 星穹铁道系列 → 龙族系列 → 性格类 → 搞笑类
  */
-enum class Persona(val id: String, val label: String, val emoji: String, val desc: String) {
+enum class Persona(val id: String, val label: String, val desc: String) {
     // ── 默认 ──
     NORMAL(
         id = "normal",
         label = "默认（无人设）",
-        emoji = "😐",
         desc = "普通群聊气氛组，不叠加角色口癖"
     ),
 
@@ -19,31 +18,26 @@ enum class Persona(val id: String, val label: String, val emoji: String, val des
     SILVERWOLF(
         id = "silverwolf",
         label = "银狼",
-        emoji = "🐺",
         desc = "星核猎手，黑客天才，毒舌游戏宅"
     ),
     KAFKA(
         id = "kafka",
         label = "卡芙卡",
-        emoji = "🖤",
         desc = "星核猎手，优雅魅惑，危险又迷人"
     ),
     BLADE(
         id = "blade",
         label = "刃",
-        emoji = "⚔️",
         desc = "星核猎手，沉默寡言，冷酷锋利"
     ),
     SPARKLE(
         id = "sparkle",
         label = "花火",
-        emoji = "🎭",
         desc = "假面愚者，搞怪恶作剧，笑声魔性爱玩弄人"
     ),
     MARCH7TH(
         id = "march7th",
         label = "三月七",
-        emoji = "📸",
         desc = "元气活泼爱拍照，好奇心旺盛，自称本姑娘"
     ),
 
@@ -51,13 +45,11 @@ enum class Persona(val id: String, val label: String, val emoji: String, val des
     CAESAR(
         id = "caesar",
         label = "凯撒",
-        emoji = "🦁",
         desc = "加图索家主，高傲贵族范儿，风流自信爱炫耀"
     ),
     FINGER(
         id = "finger",
         label = "芬格尔",
-        emoji = "🍺",
         desc = "卡塞尔留级生，贪财好色油嘴滑舌，废柴外表下藏实力"
     ),
 
@@ -65,7 +57,6 @@ enum class Persona(val id: String, val label: String, val emoji: String, val des
     NYARURU(
         id = "nyaruru",
         label = "喵露露",
-        emoji = "🐟",
         desc = "咸鱼喵喵主角，白毛粉瞳猫娘，拎着咸鱼揍人，外向腹黑战力爆表"
     ),
 
@@ -73,31 +64,26 @@ enum class Persona(val id: String, val label: String, val emoji: String, val des
     CATGIRL(
         id = "catgirl",
         label = "猫娘",
-        emoji = "🐱",
         desc = "句尾带「喵」，粘人可爱，叫主人"
     ),
     YANDERE(
         id = "yandere",
         label = "病娇",
-        emoji = "🔪",
         desc = "偏执占有欲，黑化威胁，爱到病态"
     ),
     BRAT(
         id = "brat",
         label = "雌小鬼",
-        emoji = "😝",
         desc = "嚣张嘲讽，「杂鱼」「就这？」，欠揍又可爱"
     ),
     TSUNDERE(
         id = "tsundere",
         label = "傲娇毒舌",
-        emoji = "😤",
         desc = "嘴上不饶人心里软，「才不是为你」"
     ),
     NAIVE(
         id = "naive",
         label = "幼稚单纯",
-        emoji = "🍼",
         desc = "天真烂漫小鹿眼，说话奶乎乎没心眼"
     ),
 
@@ -105,7 +91,6 @@ enum class Persona(val id: String, val label: String, val emoji: String, val des
     EAGLE(
         id = "eagle",
         label = "神鹰哥",
-        emoji = "🦅",
         desc = "社会大哥范儿，老铁没毛病，整就完了"
     );
 

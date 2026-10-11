@@ -276,7 +276,7 @@ class SettingsActivity : AppCompatActivity() {
         // ── 人设包选择 ──
         card2.addView(sectionTitle("🎭 人设包"))
         val personaDesc = TextView(this).apply {
-            text = "当前：${Persona.fromId(settings.persona).emoji} ${Persona.fromId(settings.persona).label} — ${Persona.fromId(settings.persona).desc}"
+            text = "当前：${Persona.fromId(settings.persona).label} — ${Persona.fromId(settings.persona).desc}"
             textSize = 12f; setTextColor(cTextLight)
             setPadding(0, 0, 0, dp(8))
         }
@@ -289,7 +289,7 @@ class SettingsActivity : AppCompatActivity() {
         val personaBtns = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val personaBtnMap = mutableMapOf<Persona, Button>()
         Persona.all.forEach { p ->
-            val btn = qBtn("${p.emoji} ${p.label}", primary = (p.id == settings.persona)).apply {
+            val btn = qBtn("${p.label}", primary = (p.id == settings.persona)).apply {
                 setPadding(dp(16), dp(10), dp(16), dp(10))
                 textSize = 13f
                 layoutParams = LinearLayout.LayoutParams(
@@ -298,7 +298,7 @@ class SettingsActivity : AppCompatActivity() {
                 ).apply { marginEnd = dp(8) }
                 setOnClickListener {
                     settings.persona = p.id
-                    personaDesc.text = "当前：${p.emoji} ${p.label} — ${p.desc}"
+                    personaDesc.text = "当前：${p.label} — ${p.desc}"
                     personaBtnMap.forEach { (pp, b) ->
                         b.background = if (pp.id == p.id)
                             resources.getDrawable(R.drawable.bg_q_btn_pink, null)
@@ -306,7 +306,7 @@ class SettingsActivity : AppCompatActivity() {
                             resources.getDrawable(R.drawable.bg_q_btn_soft, null)
                         b.setTextColor(if (pp.id == p.id) 0xFFFFFFFF.toInt() else cPinkDark)
                     }
-                    android.widget.Toast.makeText(this@SettingsActivity, "已切换：${p.emoji} ${p.label}", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(this@SettingsActivity, "已切换：${p.label}", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
             personaBtnMap[p] = btn
@@ -696,7 +696,7 @@ class SettingsActivity : AppCompatActivity() {
             sb.append("\n常用人设：\n")
             personaStats.forEach { (id, count) ->
                 val p = Persona.fromId(id)
-                sb.append("${p.emoji} ${p.label}：$count 次\n")
+                sb.append("${p.label}：$count 次\n")
             }
         }
 

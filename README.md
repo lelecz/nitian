@@ -1,224 +1,412 @@
 # 逆天回复
 
-> 当前版本：**v1.5.0** · 最低支持 Android 8.0 · 无需 root / Shizuku
+> v1.5.0 · Android 8.0+ (API 26+) · Kotlin · 无需 Root · 无需 Shizuku
 
-一款安卓辅助类工具：**无障碍读屏 + AI 自动生成回复 + 悬浮窗一键发送**。
-装上它，打开 QQ / 微信 / 抖音 / 快手 聊天界面，有人发消息 → 自动读懂 → AI 给出 3 条逆天回复 → 悬浮气泡弹出 → 点一下自动发出。全程无需 root、无需 Shizuku、无需截图。
+一款基于 Android Accessibility Service 的群聊辅助工具：通过无障碍控件树实时读取 QQ / 微信 / 抖音 / 快手 的聊天上下文，接入任意 OpenAI 兼容接口生成多风格回复建议，以悬浮窗形式呈现，点击即可自动填入并发送。
 
 ---
 
-## 一、它是怎么工作的
+## 目录
 
-> 打个比方：无障碍服务 = 你安插在 QQ 旁边的"速记员"。
-> 系统规定所有 App 必须向无障碍服务开放"文字接口"，所以速记员能**直接读到**聊天窗口里每一句原话（像复制粘贴一样，不是拍照认字）。
+- [工作原理](#工作原理)
+- [架构概览](#架构概览)
+- [功能特性](#功能特性)
+- [AI 接口接入](#ai-接口接入)
+- [快速上手](#快速上手)
+- [项目结构](#项目结构)
+- [构建](#构建)
+- [签名说明](#签名说明)
+- [常见问题](#常见问题)
+- [下载](#下载)
+- [更新日志](#更新日志)
+- [声明](#声明)
+
+---
+
+## 工作原理
+
+逆天回复不依赖通知监听、不依赖截图 OCR，核心数据通路走 Android 的无障碍控件树（AccessibilityNodeInfo）。
 
 ```
-① 你授权"无障碍"给本应用（= 速记员上岗）
-② 你打开 QQ 群聊天界面
-③ 速记员发现聊天窗口出现新消息（比如 "宵夜mang: 摸着自己的小雷"）
-④ 把这句话发给 AI → AI 返回 3 条逆天回复
-⑤ 3 条回复装进一个悬浮气泡，贴在你屏幕顶部
-⑥ 你点一条 → 应用自动找到 QQ 输入框和发送按钮 → 填字、发送
+用户授权无障碍服务
+        │
+        ▼
+NotifyAccessibilityService 监听聊天应用的 WINDOW_STATE_CHANGED / WINDOW_CONTENT_CHANGED 事件
+        │
+        ▼
+ScreenReader 遍历根节点，定位 RecyclerView / ListView 消息容器，采集 TextView 文本节点
+        │
+        ├─ 主路径：无障碍控件树直读（零耗时、零内存占用）
+        │
+        └─ 兜底路径：OcrManager 发起 MediaProjection 截图 + Tesseract (chi_sim) 中文识别
+        │
+        ▼
+去重（内容哈希）+ 节流（1s）+ 自触发过滤
+        │
+        ▼
+AiClient 组装 System Prompt（人设 + 抽象程度 + 软情趣 + 毒舌）
+        │
+        ▼
+POST {baseUrl}/chat/completions（OpenAI 兼容协议）
+        │
+        ▼
+解析 response.choices[0].message.content → 按行拆分为 3 条建议
+        │
+        ▼
+ReplyFloatService 悬浮窗展示（WindowManager + SYSTEM_ALERT_WINDOW）
+        │
+        ▼
+用户点击建议
+        │
+        ├─ autoSend = true → AccessibilityNodeInfo.ACTION_SET_TEXT 填入 → GestureDescription 点击发送按钮
+        │
+        └─ autoSend = false → 复制到 ClipboardManager
 ```
 
-**关键技术点：**
-- 读文字走的是安卓系统的**无障碍控件树**（AccessibilityNodeInfo），不截屏、不 OCR、不占内存
-- 悬浮窗用的是系统**悬浮窗权限**（SYSTEM_ALERT_WINDOW）
-- 自动发送用的是无障碍服务的**点击/输入能力**，模拟真人操作
-- 不需要通知权限、不需要 root、不需要 Shizuku
+**为什么不需要 Root / Shizuku：**
+自动发送通过无障碍服务的 `ACTION_SET_TEXT`（填字）和 `GestureDescription`（模拟点击）完成，这两项能力是 Android Framework 对无障碍服务的标准授权，无需更高权限。
 
 ---
 
-## 二、功能清单
+## 架构概览
 
-| 功能 | 说明 | 是否需要 |
-|---|---|---|
-| 无障碍读屏 | 读取 QQ / 微信 / 抖音 / 快手 聊天界面所有文字（核心） | ✅ 必须 |
-| 悬浮窗气泡 | AI 建议弹出在屏幕顶部，点一下自动发送 | ✅ 必须 |
-| AI 自动回复 | 接入任意 OpenAI 兼容接口，生成 3 条回复 | ✅ 必须 |
-| 🎭 人设包（15个） | 默认 / 银狼 / 卡芙卡 / 刃 / 花火 / 三月七 / 凯撒 / 芬格尔 / 喵露露 / 猫娘 / 病娇 / 雌小鬼 / 傲娇毒舌 / 幼稚单纯 / 神鹰哥 | 可选 |
-| 抽象程度调节 | 1~5 档，从"正常礼貌"到"极致抽象" | 可选 |
-| 软情趣调节 | 1~10 档，从"朋友距离"到"撩人天花板" | 可选 |
-| 毒舌程度调节 | 1~10 档，从"纯夸不损"到"阴阳拉满"，损人有底线 | 可选 |
-| 📤 设置导出/导入 | 一键备份 API 配置、风格、人成为 JSON，换机恢复 | 可选 |
-| 📈 用量统计 | 今日/累计回复数、token 消耗、7天趋势、常用人设排行 | 自动 |
-| 屏幕捕获（可选） | 控件树读不到图片/特殊界面时 OCR 兜底 | ⚠️ 部分手机系统不支持，可跳过 |
-| 诊断工具 | 查是什么悬浮窗挡住系统授权弹窗 | 排障用 |
-| AI 返回调试显示 | API 异常时悬浮窗直接显示原始返回，无需抓 logcat | 自动 |
-| 🛡️ 无障碍前台保活 | 无障碍服务升级为前台服务 + WakeLock，切应用不易掉线 | 默认开启 |
-| 🛡️ 无障碍守护 | 多层检测：定时检查 + AlarmManager 保底 + 解锁检查 + 开机自启 | 默认开启 |
-| 专属签名 | release.keystore 内置，每次构建签名一致，覆盖安装不提示 | 内置 |
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ UI Layer  (SettingsActivity, 悬浮窗 Layout)                          │
+│  └── SettingsStore / BackupManager (SharedPreferences / JSON)       │
+├─────────────────────────────────────────────────────────────────────┤
+│ Service Layer  (Android Lifecycle)                                  │
+│  ├── NotifyAccessibilityService  —— AccessibilityService            │
+│  │     ├── 前台保活 (startForeground) + PARTIAL_WAKE_LOCK            │
+│  │     ├── 事件监听 + 防抖 + 去重                                     │
+│  │     └── 自动发送 (ACTION_SET_TEXT + GestureDescription)          │
+│  ├── ReplyFloatService           —— Service + WindowManager          │
+│  ├── AccessibilityGuard          —— AlarmManager + 恢复通知          │
+│  ├── GuardReceiver               —— USER_PRESENT (解锁检查)          │
+│  └── BootReceiver                —— BOOT_COMPLETED (开机自启)        │
+├─────────────────────────────────────────────────────────────────────┤
+│ Domain Layer                                                        │
+│  ├── ScreenReader   —— AccessibilityNodeInfo 遍历 / 清洗 / 快照      │
+│  ├── OcrManager     —— MediaProjection + Tesseract                  │
+│  └── Persona        —— 15 个人设枚举（含 System Prompt 覆盖）       │
+├─────────────────────────────────────────────────────────────────────┤
+│ Data Layer                                                          │
+│  ├── AiClient       —— OkHttp + 协程 + OpenAI 兼容协议              │
+│  └── StatsManager   —— 用量统计 / token 消耗 / 7 天趋势             │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 三、快速上手
+## 功能特性
 
-### 第 1 步：填写 AI 接口
+### 核心能力
 
-打开应用 → 设置页填写三项：
-
-| 配置项 | 说明 |
+| 特性 | 说明 |
 |---|---|
-| **API Key** | `sk-` 开头的密钥（在提供接口的平台上申请，不是网址） |
-| **Base URL** | 接口地址，例如 `https://token.sensenova.cn/v1`（以你的服务商文档为准，**必须以 `/v1` 结尾，不要带 `/chat/completions`**） |
-| **模型** | 服务商支持的模型名，例如 `sensenova-6.8-flash-lite`（以你的服务商文档为准） |
+| 无障碍读屏 | 基于 AccessibilityNodeInfo 遍历控件树，实时提取聊天界面消息上下文 |
+| OCR 兜底 | 主路径不可用时（如特殊界面、图片消息）自动切 MediaProjection + Tesseract chi_sim |
+| AI 自动回复 | OpenAI 兼容协议（Chat Completions），按行解析返回，输出 3 条建议 |
+| 悬浮窗交互 | WindowManager + SYSTEM_ALERT_WINDOW，支持拖动位置、点选发送、刷新、关闭 |
+| 自动发送 | 优先匹配屏幕底部 EditText 填入文本，匹配"发送/Send" 按钮点击；失败回退到回车坐标模拟 |
+| 手动模式 | autoSend = false 时仅复制到剪贴板，不触发点击 |
 
-> 本应用使用标准的 OpenAI 兼容协议（`POST /chat/completions`），**任何提供该协议的服务都能接入**：官方接口、聚合平台、自建中转均可。
+### 可调参数
 
-填好后点 **"测试 AI 连接"**，看到示例回复即成功。
+| 参数 | 范围 | 作用 |
+|---|---|---|
+| 抽象程度 (craziness) | 1-5 | 从正常礼貌到极致抽象，控制回复风格的"逆天"强度 |
+| 软情趣 (flirty) | 1-10 | 从朋友距离到撩人天花板，控制暧昧浓度；有底线约束 |
+| 毒舌程度 (toxic) | 1-10 | 从纯夸不损到阴阳拉满；有底线约束，不人身攻击、不揭伤疤 |
+| 人设 (persona) | 15 个枚举值 | 覆盖 System Prompt 的角色覆盖，详见下方 |
+| autoSend | Boolean | 点选后自动发送 or 仅复制到剪贴板 |
+| groupFilter | String | 逗号分隔的群名关键词，仅匹配群聊触发 |
 
-### 第 2 步：开启无障碍服务
+### 人设包 (Persona)
 
-1. 点设置页的 **"开启无障碍服务"** 按钮
-2. 系统无障碍列表中找到 **"逆天回复"**，打开开关，弹窗点"确定"
-3. 若提示"应用遮挡"：点 **"🔍 诊断"** 查看是哪个应用的悬浮窗在挡，关掉它再开；或重启手机后第一时间开启（成功率最高）
+| 分类 | ID | 角色 |
+|---|---|---|
+| 默认 | normal | 无人设覆盖，通用群聊气氛组 |
+| 星穹铁道 | silverwolf / kafka / blade / sparkle / march7th | 银狼、卡芙卡、刃、花火、三月七 |
+| 龙族 | caesar / finger | 凯撒·加图索、芬格尔 |
+| 原创 | nyaruru | 喵露露（《咸鱼喵喵》主角） |
+| 性格类 | catgirl / yandere / brat / tsundere / naive | 猫娘、病娇、雌小鬼、傲娇毒舌、幼稚单纯 |
+| 搞笑 | eagle | 神鹰哥 |
 
-### 第 3 步：开启悬浮窗权限
+每个人设在 `Persona.systemAppend` 中定义独立的 System Prompt 追加段，覆盖词汇、语气、角色行为边界。
 
-1. 点设置页的 **"开启悬浮窗权限"** 按钮
-2. 系统弹出悬浮窗管理界面，允许"逆天回复"
-3. 回到设置页确认状态变为"已开启"
+### 守护与保活
 
-### 第 4 步：开始使用
+Android 系统对后台服务有严格限制，逆天回复通过 5 层机制维持无障碍服务的存活：
 
-1. 打开 QQ / 微信 / 抖音 / 快手，进入任意聊天
-2. 有人发新消息 → 屏幕顶部弹出悬浮气泡，显示 3 条 AI 生成的回复
-3. 点一条 → 自动填入输入框并发送
-4. 想刷新换一批 → 点气泡上的刷新按钮
+1. **前台服务** —— `onServiceConnected` 时 `startForeground()`，通知栏常驻，进程优先级提升
+2. **WakeLock** —— `PARTIAL_WAKE_LOCK` 常持，阻止 Doze 模式下 CPU 休眠导致无障碍挂起
+3. **AlarmManager 定时检查** —— 守护进程周期性检测无障碍服务是否存活
+4. **USER_PRESENT 解锁检查** —— 屏幕亮起时重新检查状态
+5. **BOOT_COMPLETED 开机自启** —— 设备重启后自动恢复
+6. **销毁后四重检测** —— `onDestroy` 后 500ms / 2s / 5s / 10s 递进检测，快速弹恢复通知
+
+### 设置管理
+
+| 功能 | 实现 |
+|---|---|
+| 设置持久化 | SharedPreferences (`reply_settings`, MODE_PRIVATE) |
+| 导出/导入 | `exportAll()` / `importAll()` 全量 JSON 序列化，换机恢复 |
+| 用量统计 | StatsManager 记录回复次数 + token 消耗，展示 7 天趋势柱状图 + 常用人设 Top5 |
+
+### 兼容支持
+
+| 聊天应用 | 识别逻辑 |
+|---|---|
+| QQ | 包名匹配 `mobileqq` / `tencent.mobileqq`，排除 `qqmusic` |
+| 微信 | 包名匹配 `weixin` / `wechat` |
+| 抖音 | 包名匹配 `aweme` / `ugc.aweme` |
+| 快手 | 包名匹配 `gifmaker` / `kuaishou` |
 
 ---
 
-## 四、常见问题（FAQ）
+## AI 接口接入
 
-**Q：点"授权屏幕截图"直接退回桌面？**
-A：你的手机系统（如部分 ColorOS/OPPO 系）不支持屏幕捕获授权，这是系统级限制，应用无法绕过。**不影响主功能**，跳过即可——读屏走的是无障碍控件树，不依赖截图。
+### 协议
 
-**Q：测试 AI 连接报 405 / 404？**
-A：检查 Base URL 是否以 `/v1` 结尾（如 `https://token.sensenova.cn/v1`）；再检查模型名是否与接口服务商提供的完全一致（不同平台模型名不同）。
+遵循 OpenAI Chat Completions API 协议：
 
-**Q：开了无障碍还是读不到消息？**
-A：确认无障碍开关真的处于"打开"状态（系统设置里看）；确认悬浮窗权限已开；重启应用或重启手机后再试。
+```
+POST {baseUrl}/chat/completions
+Content-Type: application/json
+Authorization: Bearer {apiKey}
 
-**Q：开无障碍时提示"被其他应用遮挡"？**
-A：这是系统保护机制。点"🔍 诊断"找到遮挡应用的悬浮窗并关闭，或重启手机后第一时间开启。
+{
+  "model": "{model}",
+  "messages": [
+    { "role": "system", "content": "{systemPrompt}" },
+    { "role": "user",   "content": "{userPrompt}" }
+  ],
+  "temperature": 0.95,
+  "max_tokens": 10000
+}
+```
 
-**Q：会读取我的隐私吗？**
-A：应用只在本地读取你打开的聊天界面文字用于生成回复，所有请求直接发给你自己配置的 AI 接口，不上传任何其他信息。
+### 参数填写要求
+
+| 字段 | 要求 | 示例 |
+|---|---|---|
+| Base URL | **必须** 以 `/v1` 结尾；**不得** 包含 `/chat/completions` 路径 | `https://token.sensenova.cn/v1` |
+| API Key | `sk-` / `Bearer ` 前缀格式；禁止填入 URL | `sk-xxxxxxxxxxxxxxxx` |
+| Model | 与服务商平台提供的模型名完全一致 | `sensenova-6.8-flash-lite` |
+
+### 兼容服务商
+
+任何提供 OpenAI 兼容协议的接口均可：商汤 (SenseNova)、火山引擎 (Doubao)、智谱 (GLM)、DeepSeek、阿里通义千问、月之暗面 (Moonshot)、自建 One-API / New API 聚合，以及 OpenAI 官方。
+
+### Prompt 构造
+
+System Prompt 由 4 段动态拼装：
+
+```
+{crazyDesc}      // 抽象程度档位 1-5 的文本描述
+{flirtyDesc}     // 软情趣档位 1-10 的文本描述
+{toxicDesc}      // 毒舌程度档位 1-10 的文本描述
+{personaAppend}  // 人设专属的 System Prompt 覆盖（可选）
+```
+
+User Prompt 结构：
+
+```
+群聊最近记录：
+{chatContext.takeLast(8).joinToString("\n")}
+
+最新消息：{lastMessage}
+
+请给出 3 条回复建议：
+```
+
+### 响应解析
+
+```kotlin
+// AiClient.parseReplies()
+json.optJSONArray("choices")
+    ?.optJSONObject(0)
+    ?.optJSONObject("message")
+    ?.optString("content", "")
+    .split("\n")        // 按行拆分
+    .map { it.trim() }
+    .filter { it.isNotBlank() }
+```
 
 ---
 
-## 五、构建
+## 快速上手
+
+### 前置条件
+
+- Android 8.0+ (API 26)
+- 可访问的 OpenAI 兼容 API 端点
+
+### 步骤
+
+**1. 配置 AI 接口**
+
+打开应用 → 设置页 → 填写 Base URL / API Key / Model → 点"测试 AI 连接"验证。
+
+**2. 开启无障碍服务**
+
+设置页 → "开启无障碍服务" → 系统无障碍列表 → 找到"逆天回复" → 打开开关。
+
+若系统提示"应用遮挡"，使用设置页的"诊断"功能定位遮挡悬浮窗并关闭；或重启设备后立即开启。
+
+**3. 开启悬浮窗权限**
+
+设置页 → "开启悬浮窗权限" → 系统悬浮窗管理界面 → 允许"逆天回复"。
+
+**4. 使用**
+
+打开 QQ / 微信 / 抖音 / 快手 → 进入任意聊天 → 等待消息触发 → 点选悬浮气泡建议 → 自动发送或复制。
+
+---
+
+## 项目结构
+
+```
+app/src/main/java/com/lelecz/reply/
+├── ai/
+│   ├── AiClient.kt          OkHttp 客户端 + 协程 + OpenAI 兼容协议请求/响应
+│   └── Persona.kt           人设枚举（15 个）+ System Prompt 构造
+├── service/
+│   ├── NotifyAccessibilityService.kt   核心服务：无障碍监听 + 读屏 + 自动发送
+│   ├── ReplyFloatService.kt            悬浮窗：WindowManager + 交互
+│   ├── ScreenReader.kt                 无障碍控件树遍历与聊天快照提取
+│   ├── OcrManager.kt                   MediaProjection + Tesseract OCR 兜底
+│   ├── AccessibilityGuard.kt            守护检查 + 恢复通知
+│   ├── GuardReceiver.kt                 USER_PRESENT 广播接收
+│   └── BootReceiver.kt                  BOOT_COMPLETED 广播接收
+├── ui/
+│   └── SettingsActivity.kt              设置页
+├── data/
+│   ├── SettingsStore.kt                 SharedPreferences 设置读写
+│   ├── BackupManager.kt                 JSON 导入/导出
+│   └── StatsManager.kt                  用量统计 + token 消耗记录
+├── App.kt                 Application 子类 + 全局崩溃捕获
+└── AndroidManifest.xml
+```
+
+### 依赖版本（gradle/libs.versions.toml）
+
+| 依赖 | 作用 |
+|---|---|
+| okhttp3 | HTTP Client |
+| kotlinx-coroutines-android | 协程调度 |
+| tesseract4android | OCR 兜底（chi_sim.traineddata 随包） |
+| androidx.core / appcompat | AndroidX 基础库 |
+
+---
+
+## 构建
 
 ```bash
 ./gradlew :app:assembleDebug
 ```
 
 **环境要求：**
-- JDK 17
-- Android SDK（compileSdk 35）
-- minSdk 26（**最低支持 Android 8.0**），targetSdk 35
-
-### 关于签名
-
-项目根目录内置 `release.keystore` 专属签名文件，debug 和 release 构建均使用同一套签名，**每次打包签名一致，覆盖安装不会提示「签名不一致」**。
 
 | 项 | 值 |
 |---|---|
-| 签名文件 | `release.keystore` |
-| 别名 (Alias) | `rereply` |
-| 密码 | `[REMOVED]`（store 和 key 相同） |
+| JDK | 17 |
+| compileSdk | 35 |
+| minSdk | 26 (Android 8.0) |
+| targetSdk | 35 |
+| Gradle Wrapper | 已内置 |
+
+### 签名
+
+项目内置 `release.keystore`，debug 与 release 构建共用同一套签名，覆盖安装不提示签名不一致。
+
+| 项 | 值 |
+|---|---|
+| 签名文件 | `release.keystore`（项目根目录） |
+| Alias | `rereply` |
+| Store Key 密码 | `[REMOVED]` |
 | 算法 | RSA 2048 + SHA256 |
-| 有效期 | 36500 天（约 100 年） |
+| 有效期 | 36500 天 |
 | SHA256 指纹 | `C0:62:BF:98:CC:DF:79:7E:CD:76:0F:58:80:10:9F:FD:8E:A2:EF:50:9D:E7:62:3D:41:CB:C8:E2:40:72:20:16` |
 
-> ⚠️ 公开仓库中的签名文件有一定安全风险，仅限个人/非商用使用。如需上架应用商店请重新生成并妥善保管。
-
-**项目结构：**
-```
-app/src/main/java/com/lelecz/reply/
-├── ai/          # AI 客户端、提示词构造、人设包（OpenAI 兼容协议）
-├── service/     # 无障碍服务、悬浮窗服务、屏幕捕获(OCR兜底)、守护保活
-├── ui/          # 设置页界面
-└── data/        # 本地设置存储、用量统计、设置备份恢复
-```
+> 公开仓库中的签名文件存在安全风险，仅限个人 / 非商用使用。上架应用商店请自行重新生成并妥善保管。
 
 ---
 
-## 六、下载
+## 常见问题
 
-最新 APK 见 [Releases](https://github.com/lelecz/nitian/releases)。
+**Q：点"授权屏幕截图"直接退回桌面？**
+部分手机系统（如 ColorOS / OPPO / OneUI 旧版）不支持 MediaProjection 授权流程，属于系统级限制，无法绕过。不影响主功能——无障碍读屏不依赖截图，跳过即可。
+
+**Q：测试 AI 连接报 HTTP 404 / 405？**
+检查 Base URL 是否以 `/v1` 结尾（例：`https://token.sensenova.cn/v1`）；检查 Model 名是否与服务商文档完全一致。
+
+**Q：开启无障碍后仍读不到消息？**
+1. 系统设置中确认无障碍开关真的处于打开状态（部分 ROM 会定时自动关闭）
+2. 确认悬浮窗权限已开启
+3. 重启应用或重启设备后再次尝试
+
+**Q：系统提示"应用遮挡"无法开启无障碍？**
+Android 无障碍设置页不允许有任何悬浮窗覆盖。使用设置页"诊断"功能定位遮挡应用的悬浮窗并关闭；或重启设备后第一时间进入无障碍设置。
+
+**Q：隐私安全？**
+应用仅在本地无障碍控件树层面读取用户正在查看的聊天界面文本，请求直接发往用户自行配置的 AI 接口。不采集设备 ID、不跨应用读取其他数据、不向任何第三方上传。
 
 ---
 
-## 七、声明
+## 下载
 
-- 本工具仅用于娱乐与学习，请勿用于骚扰他人或违反平台规则
-- AI 生成的回复内容由模型决定，使用后果自负
-- 兼容性：不同 ROM（小米/OPPO/vivo/华为/三星等）对权限管理略有差异，如遇问题请先看 FAQ
+最新 Release APK 见 [GitHub Releases](https://github.com/lelecz/nitian/releases)。
 
 ---
 
-## 八、更新日志
+## 更新日志
 
-### v1.5.0 — 设置备份 + 用量统计 + 喵露露
-- **🐟 新增喵露露人设包**：《咸鱼喵喵》主角，白毛粉瞳猫娘，拎着咸鱼揍人，外向腹黑战力爆表，人设总数达 15 个
-- **📤 新增设置导出/导入**：一键把 API 配置、风格参数、人设选择备份成 JSON 文件，换机或重装后从备份恢复，不用重新填 API Key
-- **📈 新增用量统计**：今日/累计回复数、累计 token 消耗、最近 7 天回复趋势柱状图、常用人设排行 Top5，支持清空
-- AiClient 解析 OpenAI 兼容接口返回的 `usage.total_tokens` 并记录
-- 无障碍服务在发送/复制回复时记录一次统计
-- 设置页新增「数据与备份」卡片入口
+### v1.5.0
+- 新增人设包「喵露露」（《咸鱼喵喵》主角），人设总数达 15 个
+- 新增设置 JSON 导入/导出：换机 / 重装后一键恢复 API 配置与风格参数
+- 新增加量统计：今日 / 累计回复数、累计 token 消耗、7 天趋势柱状图、常用人设 Top5
+- AiClient 解析 `usage.total_tokens` 并写入 StatsManager
 
-### v1.4.0 — 多软件支持版
-- **🎭 新增 4 个人设包**：花火（假面愚者，搞怪恶作剧）、三月七（元气爱拍照）、凯撒（龙族高傲贵族）、芬格尔（龙族废柴留级生）
-- **📱 适配微信、抖音、快手**：ScreenReader 统一管理支持的包名，新增抖音（aweme）、快手（gifmaker/kuaishou）关键词
-- **人设包重新排序**：默认 → 星穹铁道系列 → 龙族系列 → 性格类 → 搞笑类
-- 自动发送逻辑优化：输入框选屏幕最底部的 EditText，发送按钮同时匹配「发送」/「Send」
+### v1.4.0
+- 人设包扩充至 14 个：花火、三月七、凯撒、芬格尔
+- ScreenReader 新增抖音 (aweme)、快手 (gifmaker / kuaishou) 包名匹配
+- 自动发送优化：输入框选屏幕最底部 EditText；发送按钮同时匹配"发送" / "Send"
 
-### v1.3.0 — 傲娇毒舌版
-- **🎭 新增 2 个人设包**：**傲娇毒舌**（😤 嘴硬心软，「哼，才不是……」）、**幼稚单纯**（🍼 奶声奶气，天真烂漫小鹿眼）
-- **😏 新增毒舌程度滑块 1~10 档**：独立于软情趣，控制吐槽/讽刺/阴阳怪气强度，从"纯夸不损"到"阴阳拉满"
-- **毒舌有底线约束**：提示词内置"不人身攻击、不揭伤疤、不骂脏话"，损人不下流
+### v1.3.0
+- 人设包新增「傲娇毒舌」「幼稚单纯」
+- 毒舌程度独立滑块 (1-10)
+- 提示词注入毒舌底线：不人身攻击、不揭伤疤、不骂脏话
 
-### v1.2.0 — 星穹铁道版
-- **🎭 新增 3 个崩坏：星穹铁道人设包**：银狼（黑客毒舌游戏宅）、卡芙卡（优雅魅惑危险女人）、刃（沉默寡言冷酷剑客）
-- **🛡️ 无障碍服务升级为前台服务**：onServiceConnected 时调用 startForeground，通知栏常驻保活，大幅降低切应用时被系统杀掉的概率
-- **🛡️ 新增 PARTIAL_WAKE_LOCK 唤醒锁**：防止 Doze 模式下 CPU 休眠导致无障碍挂起
-- **🛡️ 守护检测升级**：服务被关闭后 500ms/2s/5s/10s 四次递进检测，更快发现并弹恢复通知
-- **🛡️ 被关时自动拉起悬浮窗服务**：服务挂掉瞬间尝试重启前台服务，拉高进程优先级
-- **修复悬浮窗布局崩溃**：将 `?attr/selectableItemBackgroundBorderless` 替换为不依赖主题的 RippleDrawable，修复 Service Context 下加载布局崩溃
-- **修复悬浮窗刷新按钮触摸拦截**：拖动区域缩小至「拖我」文字，刷新/关闭按钮点击正常
-- **内置专属签名文件**：`release.keystore`，debug/release 共用，每次构建签名一致
-- Manifest 合规：无障碍服务声明 `foregroundServiceType="specialUse"`
+### v1.2.0
+- 人设包新增「银狼」「卡芙卡」「刃」（星穹铁道系列）
+- 无障碍服务升级为前台服务，降低后台被杀概率
+- 新增 PARTIAL_WAKE_LOCK 防 Doze
+- 守护检测升级为 500ms / 2s / 5s / 10s 四重递进
+- 内置专属签名文件 `release.keystore`
+- Manifest 声明 `foregroundServiceType="specialUse"` 合规
 
 ### v1.1.8
-- `max_tokens` 提升至 10000，避免模型输出被截断
-- 修复悬浮窗拖动时 `ClassCastException` 崩溃（`wm.updateViewLayout` 传参错误）
-- 读屏去重优化：只比最新一条消息，避免新消息被误判为重复
-- 读屏节流从 1.5s 缩短至 1s，响应更跟手
-- AI 返回空/异常时，悬浮窗直接显示原始返回内容（`[模型返回空内容]` / `[API错误]` / `[返回非JSON]` 等），无需抓 logcat
+- max_tokens 提升至 10000
+- 悬浮窗拖动 ClassCastException 修复
+- 读屏去重优化（仅比较最新一条消息）
+- 读屏节流缩短至 1s
+- API 异常时悬浮窗直接展示原始返回，无需抓 logcat
 
-### v1.1.7
-- 修复悬浮窗拖动崩溃（`WindowManager.LayoutParams` 误设到子 View）
-- 读屏去重与节流优化
+### v1.1.7 — v1.1.1
+- 悬浮窗拖动崩溃修复
+- AI 返回多级兜底解析
+- max_tokens / 单条回复长度放宽
+- 读屏协程与 AI 请求协程分离，修复"不主动读屏"回归
+- 协程取消与真实异常分离，消除误报
+- vivo / OriginOS 系统自动关闭无障碍的防护
+- 悬浮窗刷新按钮新增
 
-### v1.1.6
-- AI 返回解析增加多级兜底（按行→按标点→原始内容截断），不再轻易返回空
-- 增加模型原始返回日志
+---
 
-### v1.1.5
-- `max_tokens` 从 200 提升至 500
-- 单条回复长度限制从 60 字放宽到 80 字
+## 声明
 
-### v1.1.4
-- 修复 v1.1.3 引入的"不主动读屏"问题：读屏协程（readJob）与 AI 请求协程（aiJob）分离，取消 AI 请求不再影响读屏
-
-### v1.1.3
-- 修复"⚠️ StandaloneCoroutine was cancelled"频繁误报：区分协程正常取消与真实异常
-
-### v1.1.2
-- 无障碍守护：针对 vivo/OriginOS 等系统自动关闭无障碍的问题，服务被关闭时通知用户一键恢复
-- Q 弹 UI 全面改造 + 新应用图标
-
-### v1.1.1
-- 悬浮窗增加刷新按钮
-- 无障碍服务稳定性优化
+- 本工具仅用于娱乐与学习，请勿用于骚扰他人或违反平台规则
+- AI 生成内容由模型决定，使用后果自负
+- 不同 ROM 对权限管理有差异，如遇问题请先查阅上方 FAQ
