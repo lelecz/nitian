@@ -2,31 +2,24 @@ package com.lelecz.reply.ui
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.provider.Settings
-import android.view.MotionEvent
-import android.view.View
-import android.view.animation.OvershootInterpolator
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.SeekBar
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import com.lelecz.reply.R
 import com.lelecz.reply.ai.Persona
 import com.lelecz.reply.data.SettingsStore
+import com.lelecz.reply.data.WallpaperStore
 import com.lelecz.reply.service.ReplyFloatService
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import com.lelecz.reply.ai.AiClient
 
-class SettingsActivity : AppCompatActivity() {
+/**
+ * 设置页：回复风格 / 人设 / 监听 / 权限与工具 / 数据备份 / 外观（壁纸）。
+ * 总服务开关与 API 配置已拆到主页与 API 页。
+ */
+class SettingsActivity : BaseActivity() {
 
     private lateinit var settings: SettingsStore
     private lateinit var stats: com.lelecz.reply.data.StatsManager
@@ -35,26 +28,19 @@ class SettingsActivity : AppCompatActivity() {
     /** SAF 请求码 */
     private val REQUEST_EXPORT = 2001
     private val REQUEST_IMPORT = 2002
+    private val REQUEST_PICK_WALLPAPER = 2003
     /** 导出时缓存的 JSON 文本 */
     private var pendingBackupJson: String? = null
-
-    // Q弹配色
-    private val cPink = 0xFFFF8FAB.toInt()
-    private val cPinkDark = 0xFFF06E94.toInt()
-    private val cPurple = 0xFFB8A9F0.toInt()
-    private val cPurpleDark = 0xFF9D8AE8.toInt()
-    private val cBlue = 0xFF8EC9F0.toInt()
-    private val cBlueDark = 0xFF6FB4E8.toInt()
-    private val cText = 0xFF5A4A52.toInt()
-    private val cTextLight = 0xFF9B8A92.toInt()
-    private val cSection = 0xFFE86A92.toInt()
+    private var lastOcrClickTime: Long = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settings = SettingsStore(this)
         stats = com.lelecz.reply.data.StatsManager(this)
         backup = com.lelecz.reply.data.BackupManager(this, settings, stats)
-        setContentView(buildUi())
+        val container = createPage()
+        buildUi(container)
+        playEnter(container)
     }
 
     override fun onResume() {
@@ -64,23 +50,23 @@ class SettingsActivity : AppCompatActivity() {
         // 刷新 OCR 授权状态显示
         findViewById<Button>(R.id.ocrBtn)?.let {
             it.text = if (com.lelecz.reply.service.OcrManager.isAuthorized())
-                "🌸 屏幕截图（可选）· 已授权 ✓"
+                "屏幕截图（可选）· 已授权 ✓"
             else
-                "🌸 屏幕截图（可选）· 未授权（不影响主功能）"
+                "屏幕截图（可选）· 未授权（不影响主功能）"
         }
         // 刷新无障碍守护状态
         findViewById<Button>(R.id.guardBtn)?.let {
             it.text = if (com.lelecz.reply.service.AccessibilityGuard.isEnabled(this))
-                "🛡️ 无障碍守护 · 运行中 ✓"
+                "无障碍守护 · 运行中 ✓"
             else
-                "🛡️ 无障碍守护 · 已关闭（点我开启）"
+                "无障碍守护 · 已关闭（点我开启）"
         }
         // 刷新电池优化按钮状态
         findViewById<Button>(R.id.batteryBtn)?.let {
             it.text = if (com.lelecz.reply.service.AccessibilityGuard.isIgnoringBatteryOptimizations(this))
-                "🔋 电池优化 · 已忽略（防清理 ✓）"
+                "电池优化 · 已忽略（防清理 ✓）"
             else
-                "🔋 电池优化（防清理必开）"
+                "电池优化（防清理必开）"
         }
         // OCR 授权发起后 4 秒内回到前台却没收到结果 → 系统不支持，提示跳过
         if (System.currentTimeMillis() - lastOcrClickTime < 4000 &&
@@ -94,246 +80,19 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private var lastOcrClickTime: Long = 0
+    private fun buildUi(container: LinearLayout) {
+        container.addView(pageHeader("应用设置"))
 
-    private fun buildUi(): View {
-        val root = ScrollView(this).apply {
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFFFFF0F5.toInt(), 0xFFF7F1FF.toInt(), 0xFFEFF6FF.toInt())
-            )
-            overScrollMode = View.OVER_SCROLL_NEVER
-        }
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(22), dp(18), dp(44))
-        }
-
-        // ── 标题区 ──
-        container.addView(title())
-        container.addView(subTitle("●ᴗ● 群聊整活小助手 · 今天也要元气满满"))
-        container.addView(spacer(dp(6)))
-
-        // ── 卡片1：API 设置 ──
-        val card1 = card()
-        card1.addView(sectionTitle("🧪 API 设置"))
-        val keyInput = EditText(this).apply {
-            hint = "API Key（从你的服务商获取）"
-            setText(settings.apiKey)
-            setSingleLine(true)
-            qInput()
-        }
-        card1.addView(field("API Key", keyInput))
-        val urlInput = EditText(this).apply {
-            hint = "https://xxx/v1 或其他地址"
-            setText(settings.baseUrl)
-            setSingleLine(true)
-            qInput()
-        }
-        card1.addView(field("Base URL", urlInput))
-        val modelInput = EditText(this).apply {
-            hint = "模型名（如 gpt-4、glm-4 等）"
-            setText(settings.model)
-            setSingleLine(true)
-            qInput()
-        }
-        card1.addView(field("模型", modelInput))
-        card1.addView(spacer(dp(6)))
-
-        // 服务商预设快捷按钮
-        val presetLabel = TextView(this).apply {
-            text = "🚀 一键预设（点一下自动填入）"
-            textSize = 12.5f
-            setTextColor(cTextLight)
-            setPadding(dp(4), 0, 0, dp(6))
-        }
-        card1.addView(presetLabel)
-        val presetScroll = android.widget.HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-        }
-        val presetRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val presets = listOf(
-            Triple("商汤", "https://token.sensenova.cn/v1", "sensenova-6.8-flash-lite"),
-            Triple("火山引擎", "https://ark.cn-beijing.volces.com/api/v3", "doubao-1-5-pro-32k-250115"),
-            Triple("智谱AI", "https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
-            Triple("DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat"),
-            Triple("通义千问", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
-            Triple("OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"),
-        )
-        presets.forEach { (name, url, model) ->
-            val btn = Button(this).apply {
-                text = name
-                textSize = 12f
-                setTextColor(cPinkDark)
-                setPadding(dp(10), dp(6), dp(10), dp(6))
-                background = resources.getDrawable(R.drawable.bg_q_btn_soft, null)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { marginEnd = dp(6) }
-                setOnClickListener {
-                    urlInput.setText(url)
-                    modelInput.setText(model)
-                    android.widget.Toast.makeText(this@SettingsActivity, "已填入 $name 预设", android.widget.Toast.LENGTH_SHORT).show()
-                }
-                qbounce()
-            }
-            presetRow.addView(btn)
-        }
-        presetScroll.addView(presetRow)
-        card1.addView(presetScroll)
-        card1.addView(spacer(dp(10)))
-
-        // 保存 + 拉取模型列表：并排一组
-        val saveBtn = qBtn("💾 保存设置", true)
-        val fetchModelsBtn = qBtn("📋 拉取模型", false, true)
-        fetchModelsBtn.setOnClickListener {
-            // 用输入框当前值发请求（Key/URL 可能还没点保存）
-            settings.apiKey = keyInput.text.toString()
-            settings.baseUrl = urlInput.text.toString()
-            fetchModelsBtn.text = "⏳ 拉取中…"
-            fetchModelsBtn.isEnabled = false
-            CoroutineScope(Dispatchers.Main).launch {
-                try {
-                    val models = AiClient(settings).fetchModels()
-                    if (models.isEmpty()) {
-                        Toast.makeText(this@SettingsActivity, "接口返回了空列表", Toast.LENGTH_LONG).show()
-                    } else {
-                        showModelPicker(models, modelInput)
-                    }
-                } catch (e: Exception) {
-                    Toast.makeText(
-                        this@SettingsActivity,
-                        "拉取失败：${e.message?.take(80) ?: "未知错误"}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-                fetchModelsBtn.text = "📋 拉取模型"
-                fetchModelsBtn.isEnabled = true
-            }
-        }
-        val saveRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        saveRow.addView(saveBtn, LinearLayout.LayoutParams(
-            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-        ).apply { marginEnd = dp(6) })
-        saveRow.addView(fetchModelsBtn, LinearLayout.LayoutParams(
-            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-        ))
-        card1.addView(saveRow, lp())
-
-        // 响应超时自定义（10~300 秒，步进 10，默认 60 = 原固定值）
-        card1.addView(spacer(dp(10)))
-        val timeoutLabel = TextView(this).apply {
-            text = "⏱ 响应超时：${settings.timeoutSec} 秒（10~300）"
-            textSize = 14f
-            setTextColor(cText)
-        }
-        card1.addView(timeoutLabel)
-        val timeoutBar = qSeekBar().apply {
-            max = 29
-            progress = (settings.timeoutSec / 10) - 1
-            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) {
-                    timeoutLabel.text = "⏱ 响应超时：${(p + 1) * 10} 秒（10~300）"
-                }
-                override fun onStartTrackingTouch(sb: SeekBar?) {}
-                override fun onStopTrackingTouch(sb: SeekBar?) {}
-            })
-        }
-        card1.addView(timeoutBar, lp())
-
-        val testBtn = qBtn("⚡ 测试 AI 连接", false)
-        testBtn.setOnClickListener {
-            settings.apiKey = keyInput.text.toString()
-            settings.baseUrl = urlInput.text.toString()
-            settings.model = modelInput.text.toString()
-            settings.timeoutSec = (timeoutBar.progress + 1) * 10
-            testBtn.text = "⏳ 测试中…"
-            testBtn.isEnabled = false
-            CoroutineScope(Dispatchers.Main).launch {
-                val t0 = System.currentTimeMillis()
-                try {
-                    val replies = AiClient(settings).generateReplies(
-                        listOf("群友: 在吗"), "在吗"
-                    )
-                    val cost = System.currentTimeMillis() - t0
-                    if (replies.isEmpty()) {
-                        Toast.makeText(this@SettingsActivity, "连接成功（延迟 ${cost}ms），但模型没返回内容", Toast.LENGTH_LONG).show()
-                    } else {
-                        Toast.makeText(
-                            this@SettingsActivity,
-                            "🎉 连接成功 · 延迟 ${cost}ms\n示例回复：${replies.first()}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                } catch (e: Exception) {
-                    val cost = System.currentTimeMillis() - t0
-                    Toast.makeText(this@SettingsActivity, "失败（延迟 ${cost}ms）：${e.message?.take(60)}", Toast.LENGTH_LONG).show()
-                }
-                testBtn.text = "⚡ 测试 AI 连接"
-                testBtn.isEnabled = true
-            }
-        }
-        card1.addView(testBtn, lp())
-        container.addView(card1)
-
-        // ── 卡片2：回复风格 ──
+        // ── 卡片1：回复风格 ──
         val card2 = card()
-        card2.addView(sectionTitle("🎭 回复风格"))
+        card2.addView(sectionTitle("回复风格"))
 
-        val crazyLabel = TextView(this).apply {
-            text = "🤪 抽象逆天程度：${settings.craziness} / 5"
-            textSize = 14f; setTextColor(cText)
-        }
-        card2.addView(crazyLabel)
-        val crazyBar = qSeekBar().apply {
-            max = 4; progress = settings.craziness - 1
-            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) {
-                    crazyLabel.text = "🤪 抽象逆天程度：${p + 1} / 5"
-                }
-                override fun onStartTrackingTouch(sb: SeekBar?) {}
-                override fun onStopTrackingTouch(sb: SeekBar?) {}
-            })
-        }
-        card2.addView(crazyBar, lp())
-
-        val flirtyLabel = TextView(this).apply {
-            text = "💘 软情趣程度：${settings.flirty} / 10"
-            textSize = 14f; setTextColor(cText)
-        }
-        card2.addView(flirtyLabel)
-        val flirtyBar = qSeekBar().apply {
-            max = 9; progress = settings.flirty - 1
-            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) {
-                    flirtyLabel.text = "💘 软情趣程度：${p + 1} / 10"
-                }
-                override fun onStartTrackingTouch(sb: SeekBar?) {}
-                override fun onStopTrackingTouch(sb: SeekBar?) {}
-            })
-        }
-        card2.addView(flirtyBar, lp())
-
-        val toxicLabel = TextView(this).apply {
-            text = "😏 毒舌程度：${settings.toxic} / 10"
-            textSize = 14f; setTextColor(cText)
-        }
-        card2.addView(toxicLabel)
-        val toxicBar = qSeekBar().apply {
-            max = 9; progress = settings.toxic - 1
-            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) {
-                    toxicLabel.text = "😏 毒舌程度：${p + 1} / 10"
-                }
-                override fun onStartTrackingTouch(sb: SeekBar?) {}
-                override fun onStopTrackingTouch(sb: SeekBar?) {}
-            })
-        }
-        card2.addView(toxicBar, lp())
+        val crazyBar = sliderRow(card2, "抽象逆天程度", 4, settings.craziness - 1) { "${it + 1} / 5" }
+        val flirtyBar = sliderRow(card2, "软情趣程度", 9, settings.flirty - 1) { "${it + 1} / 10" }
+        val toxicBar = sliderRow(card2, "毒舌程度", 9, settings.toxic - 1) { "${it + 1} / 10" }
 
         // ── 人设包选择 ──
-        card2.addView(sectionTitle("🎭 人设包"))
+        card2.addView(sectionTitle("人设包"))
         val personaDesc = TextView(this).apply {
             text = "当前：${Persona.fromId(settings.persona).label} — ${Persona.fromId(settings.persona).desc}"
             textSize = 12f; setTextColor(cTextLight)
@@ -365,7 +124,7 @@ class SettingsActivity : AppCompatActivity() {
                             resources.getDrawable(R.drawable.bg_q_btn_soft, null)
                         b.setTextColor(if (pp.id == p.id) 0xFFFFFFFF.toInt() else cPinkDark)
                     }
-                    android.widget.Toast.makeText(this@SettingsActivity, "已切换：${p.label}", android.widget.Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@SettingsActivity, "已切换：${p.label}", Toast.LENGTH_SHORT).show()
                 }
             }
             personaBtnMap[p] = btn
@@ -375,9 +134,9 @@ class SettingsActivity : AppCompatActivity() {
         card2.addView(personaRow, lp())
         container.addView(card2)
 
-        // ── 卡片3：监听设置 ──
+        // ── 卡片2：监听设置 ──
         val card3 = card()
-        card3.addView(sectionTitle("👂 监听设置"))
+        card3.addView(sectionTitle("监听设置"))
         val groupInput = EditText(this).apply {
             hint = "只监听这些群（逗号分隔关键词，留空=全部）"
             setText(settings.groupFilter)
@@ -391,20 +150,14 @@ class SettingsActivity : AppCompatActivity() {
             isChecked = settings.autoSend
         }
         card3.addView(field("发送方式", autoSendSwitch))
-
-        val serviceSwitch = qSwitch().apply {
-            text = "启用服务"
-            isChecked = settings.serviceEnabled
-        }
-        card3.addView(field("总开关", serviceSwitch))
         container.addView(card3)
 
-        // ── 卡片4：权限与工具 ──
+        // ── 卡片3：权限与工具 ──
         val card4 = card()
-        card4.addView(sectionTitle("⚙️ 权限与工具"))
+        card4.addView(sectionTitle("权限与工具"))
 
         // 无障碍守护：状态 + 一键开启 + 防清理引导
-        val guardBtn = qBtn("🛡️ 无障碍守护 · 检查中…", false, blue = true)
+        val guardBtn = qBtn("无障碍守护 · 检查中…", false, blue = true)
         guardBtn.id = R.id.guardBtn
         guardBtn.setOnClickListener {
             val enabled = com.lelecz.reply.service.AccessibilityGuard.isEnabled(this)
@@ -412,8 +165,8 @@ class SettingsActivity : AppCompatActivity() {
                 // 已开启：弹出防清理引导（vivo/小米等 ROM 会后台清理）
                 val hasBatteryOpt = com.lelecz.reply.service.AccessibilityGuard.isIgnoringBatteryOptimizations(this)
                 val batteryStatus = if (hasBatteryOpt) "✓ 已忽略电池优化" else "✗ 未忽略电池优化（建议开启）"
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("🛡️ 无障碍守护 · 运行中")
+                Glass.builder(this)
+                    .setTitle("无障碍守护 · 运行中")
                     .setMessage(
                         "服务正常！\n\n电池优化状态：$batteryStatus\n\n" +
                             "但部分系统会后台自动清理，建议做防清理设置：\n\n" +
@@ -427,7 +180,7 @@ class SettingsActivity : AppCompatActivity() {
                         com.lelecz.reply.service.AccessibilityGuard.openBatteryOptimization(this)
                     })
                     .setNegativeButton("知道了", null)
-                    .show()
+                    .showGlass()
             } else {
                 // 被关了：一键跳转无障碍设置
                 Toast.makeText(this, "正在打开无障碍设置，找到「逆天回复」打开开关", Toast.LENGTH_LONG).show()
@@ -437,7 +190,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         card4.addView(guardBtn, lp())
 
-        val permissionBtn = qBtn("🔓 开启无障碍服务", false, blue = true)
+        val permissionBtn = qBtn("开启无障碍服务", false, blue = true)
         permissionBtn.setOnClickListener {
             // 先收起悬浮窗，避免遮挡系统权限确认框（否则系统提示"无法验证回应"）
             ReplyFloatService.hide(this)
@@ -445,21 +198,21 @@ class SettingsActivity : AppCompatActivity() {
         }
         card4.addView(permissionBtn, lp())
 
-        val diagBtn = qBtn("🔍 诊断：为什么开不了无障碍", false)
+        val diagBtn = qBtn("诊断：为什么开不了无障碍", false)
         diagBtn.setOnClickListener {
             ReplyFloatService.hide(this)
             showDiagnosis()
         }
         card4.addView(diagBtn, lp())
 
-        val overlayBtn = qBtn("🪟 开启悬浮窗权限", false, blue = true)
+        val overlayBtn = qBtn("开启悬浮窗权限", false, blue = true)
         overlayBtn.setOnClickListener {
             ReplyFloatService.hide(this)
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
         }
         card4.addView(overlayBtn, lp())
 
-        val batteryBtn = qBtn("🔋 电池优化（防清理必开）", false)
+        val batteryBtn = qBtn("电池优化（防清理必开）", false)
         batteryBtn.id = R.id.batteryBtn
         batteryBtn.setOnClickListener {
             val ignoring = com.lelecz.reply.service.AccessibilityGuard.isIgnoringBatteryOptimizations(this)
@@ -471,7 +224,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         card4.addView(batteryBtn, lp())
 
-        val ocrBtn = qBtn("🌸 屏幕截图（可选）· 未授权（不影响主功能）", false)
+        val ocrBtn = qBtn("屏幕截图（可选）· 未授权（不影响主功能）", false)
         ocrBtn.id = R.id.ocrBtn
         ocrBtn.setOnClickListener {
             // 先给用户反馈，避免重复点击
@@ -484,7 +237,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         card4.addView(ocrBtn, lp())
 
-        val testFloatBtn = qBtn("🎈 测试悬浮窗（弹个示例）", false)
+        val testFloatBtn = qBtn("测试悬浮窗（弹个示例）", false)
         testFloatBtn.setOnClickListener {
             try {
                 ReplyFloatService.show(this, "群友: 今天好无聊啊", listOf("那我给你表演个才艺，用脚趾头比耶", "无聊就来找我，我专业陪聊二十年", "你无聊？那你猜猜我现在在干嘛，在数蚂蚁"))
@@ -494,10 +247,10 @@ class SettingsActivity : AppCompatActivity() {
         }
         card4.addView(testFloatBtn, lp())
 
-        val crashBtn = qBtn("🐛 查看崩溃日志（闪退时点这个）", false)
+        val crashBtn = qBtn("查看崩溃日志（闪退时点这个）", false)
         crashBtn.setOnClickListener {
             val log = com.lelecz.reply.App.readCrashLog(this)
-            android.app.AlertDialog.Builder(this)
+            Glass.builder(this)
                 .setTitle("崩溃日志（复制发给开发者）")
                 .setMessage(log)
                 .setPositiveButton("复制", { _, _ ->
@@ -506,30 +259,30 @@ class SettingsActivity : AppCompatActivity() {
                     Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
                 })
                 .setNegativeButton("关闭", null)
-                .show()
+                .showGlass()
         }
         card4.addView(crashBtn, lp())
         container.addView(card4)
 
-        // ── 卡片5：数据与备份 ──
+        // ── 卡片4：数据与备份 ──
         val card5 = card()
-        card5.addView(sectionTitle("📊 数据与备份"))
+        card5.addView(sectionTitle("数据与备份"))
 
-        val statsBtn = qBtn("📈 查看用量统计", false)
+        val statsBtn = qBtn("查看用量统计", false)
         statsBtn.setOnClickListener { showStatsDialog() }
         card5.addView(statsBtn, lp())
 
-        val exportBtn = qBtn("📤 导出设置（备份到文件）", false, blue = true)
+        val exportBtn = qBtn("导出设置（备份到文件）", false, blue = true)
         exportBtn.setOnClickListener { startExport() }
         card5.addView(exportBtn, lp())
 
-        val importBtn = qBtn("📥 导入设置（从备份恢复）", false, blue = true)
+        val importBtn = qBtn("导入设置（从备份恢复）", false, blue = true)
         importBtn.setOnClickListener { startImport() }
         card5.addView(importBtn, lp())
 
-        val clearStatsBtn = qBtn("🧹 清空用量统计", false)
+        val clearStatsBtn = qBtn("清空用量统计", false)
         clearStatsBtn.setOnClickListener {
-            android.app.AlertDialog.Builder(this)
+            Glass.builder(this)
                 .setTitle("清空统计")
                 .setMessage("确定清空所有用量统计数据吗？（不影响你的设置）")
                 .setPositiveButton("清空") { _, _ ->
@@ -537,217 +290,77 @@ class SettingsActivity : AppCompatActivity() {
                     Toast.makeText(this, "统计已清空", Toast.LENGTH_SHORT).show()
                 }
                 .setNegativeButton("取消", null)
-                .show()
+                .showGlass()
         }
         card5.addView(clearStatsBtn, lp())
         container.addView(card5)
 
-        // 保存按钮逻辑（放在所有输入控件声明之后）
-        saveBtn.setOnClickListener {
-            val key = keyInput.text.toString().trim()
-            if (key.isNotBlank() && key.startsWith("http")) {
-                Toast.makeText(
-                    this,
-                    "⚠️ API Key 看起来不对：应填密钥，不是网址",
-                    Toast.LENGTH_LONG
-                ).show()
+        // ── 卡片5：外观（自定义壁纸） ──
+        val card6 = card()
+        card6.addView(sectionTitle("外观"))
+        val wallpaperStatus = TextView(this).apply {
+            text = if (WallpaperStore.exists(this@SettingsActivity)) "当前：已设置自定义壁纸" else "当前：默认渐变背景"
+            textSize = 12f
+            setTextColor(cTextLight)
+            setPadding(0, 0, 0, dp(8))
+        }
+        card6.addView(wallpaperStatus)
+
+        val wallpaperPickBtn = qBtn("选择壁纸", false, blue = true)
+        wallpaperPickBtn.setOnClickListener {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
             }
-            settings.apiKey = key
-            settings.baseUrl = urlInput.text.toString()
-            settings.model = modelInput.text.toString()
+            try {
+                @Suppress("DEPRECATION")
+                startActivityForResult(intent, REQUEST_PICK_WALLPAPER)
+            } catch (e: Exception) {
+                Toast.makeText(this, "无法打开文件选择器：${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+        card6.addView(wallpaperPickBtn, lp())
+
+        val wallpaperClearBtn = qBtn("清除壁纸", false)
+        wallpaperClearBtn.setOnClickListener {
+            WallpaperStore.clear(this)
+            Toast.makeText(this, "壁纸已清除", Toast.LENGTH_SHORT).show()
+            recreate()
+        }
+        card6.addView(wallpaperClearBtn, lp())
+
+        val wallpaperHint = TextView(this).apply {
+            text = "壁纸仅保存在本机应用目录，不会上传；三个页面共用。"
+            textSize = 12f
+            setTextColor(cTextLight)
+            setPadding(dp(4), dp(6), 0, 0)
+        }
+        card6.addView(wallpaperHint)
+        container.addView(card6)
+
+        // 保存按钮：风格 + 监听（API 三要素在 API 页保存，总开关在主页即时生效）
+        val saveBtn = qBtn("保存设置（风格 / 监听）", true)
+        saveBtn.setOnClickListener {
             settings.groupFilter = groupInput.text.toString()
             settings.autoSend = autoSendSwitch.isChecked
-            settings.serviceEnabled = serviceSwitch.isChecked
             settings.craziness = crazyBar.progress + 1
             settings.flirty = flirtyBar.progress + 1
             settings.toxic = toxicBar.progress + 1
-            settings.timeoutSec = (timeoutBar.progress + 1) * 10
-            Toast.makeText(this, "✨ 已保存，喵~", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "已保存，喵~", Toast.LENGTH_SHORT).show()
         }
+        container.addView(saveBtn, lp())
 
         val hint = TextView(this).apply {
-            text = "💡 使用小贴士\n1. 选择你的服务商（点上方预设按钮），填入 API Key\n2. 先开无障碍 → 成功后再开悬浮窗权限\n3. 打开 QQ 聊天界面，新消息→读屏→悬浮窗弹建议→点一下自动发送\n\n支持：商汤、火山引擎（豆包）、智谱AI、DeepSeek、通义千问、OpenAI 等所有兼容 OpenAI 格式的 API\n\n⚠ 开无障碍被提示\"应用遮挡\"时：点\"诊断\"找出挡道的悬浮窗关掉再开。\n\n无需 root / Shizuku。"
+            text = "使用小贴士\n1. 去「API 设置」页选服务商预设、填 Key、点「拉取模型」\n2. 总开关在主页，改动立即生效\n3. 先开无障碍 → 成功后再开悬浮窗权限\n4. 打开 QQ 聊天界面，新消息→读屏→悬浮窗弹建议→点一下自动发送\n\n注意：开无障碍被提示\"应用遮挡\"时：点\"诊断\"找出挡道的悬浮窗关掉再开。\n\n无需 root / Shizuku。"
             textSize = 12.5f
             setTextColor(cTextLight)
             setPadding(dp(6), dp(14), dp(6), 0)
             setLineSpacing(dp(3).toFloat(), 1f)
         }
         container.addView(hint)
-
-        root.addView(container)
-
-        // 页面进入 Q 弹动画
-        container.alpha = 0f
-        container.translationY = dp(30).toFloat()
-        container.animate().alpha(1f).translationY(0f).setDuration(400)
-            .setInterpolator(OvershootInterpolator(0.6f)).start()
-
-        return root
     }
-
-    // ─────────── Q弹组件 ───────────
-
-    /** 白色圆角卡片 */
-    private fun card(): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(14))
-            setBackgroundResource(R.drawable.bg_q_card)
-            elevation = dp(2).toFloat()
-            val mlp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            mlp.bottomMargin = dp(14)
-            layoutParams = mlp
-        }
-    }
-
-    /** Q弹主按钮：粉紫渐变 + 按压回弹 */
-    private fun qBtn(text: String, primary: Boolean, blue: Boolean = false): Button {
-        return Button(this).apply {
-            this.text = text
-            textSize = 15f
-            setTextColor(0xFFFFFFFF.toInt())
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setAllCaps(false)
-            gravity = android.view.Gravity.CENTER
-            setPadding(0, dp(14), 0, dp(14))
-            background = if (blue)
-                resources.getDrawable(R.drawable.bg_q_btn_blue, null)
-            else if (primary)
-                resources.getDrawable(R.drawable.bg_q_btn_pink, null)
-            else
-                resources.getDrawable(R.drawable.bg_q_btn_soft, null)
-            if (!primary && !blue) setTextColor(cPinkDark)
-            qbounce()
-        }
-    }
-
-    /** 按压弹性回弹（Q弹手感核心） */
-    private fun View.qbounce() {
-        setOnTouchListener { v, e ->
-            when (e.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.animate().scaleX(0.93f).scaleY(0.93f).setDuration(90).start()
-                    false
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().scaleX(1f).scaleY(1f).setDuration(220)
-                        .setInterpolator(OvershootInterpolator(1.6f)).start()
-                    false
-                }
-                else -> false
-            }
-        }
-    }
-
-    /** Q弹输入框 */
-    private fun EditText.qInput() {
-        textSize = 15f
-        setTextColor(cText)
-        setHintTextColor(0xFFC9B3BB.toInt())
-        setPadding(dp(14), dp(12), dp(14), dp(12))
-        background = resources.getDrawable(R.drawable.bg_q_input, null)
-        maxLines = 1
-    }
-
-    /** Q弹开关 */
-    private fun qSwitch(): Switch {
-        return Switch(this).apply {
-            textSize = 14f
-            setTextColor(cText)
-            trackDrawable = resources.getDrawable(R.drawable.bg_q_switch_track, null)
-            thumbDrawable = resources.getDrawable(R.drawable.bg_q_switch_thumb, null)
-        }
-    }
-
-    /** Q弹滑块 */
-    private fun qSeekBar(): SeekBar {
-        return SeekBar(this).apply {
-            progressDrawable = resources.getDrawable(R.drawable.seekbar_progress, null)
-            thumb = resources.getDrawable(R.drawable.seekbar_thumb, null)
-            splitTrack = false
-            setPadding(dp(2), dp(10), dp(2), dp(10))
-        }
-    }
-
-    private fun title(): TextView {
-        return TextView(this).apply {
-            text = "🐱 逆天回复"
-            textSize = 28f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(cSection)
-        }
-    }
-
-    private fun subTitle(t: String): TextView {
-        return TextView(this).apply {
-            text = t
-            textSize = 13f
-            setTextColor(cTextLight)
-            setPadding(0, dp(2), 0, dp(14))
-        }
-    }
-
-    private fun sectionTitle(t: String): TextView {
-        return TextView(this).apply {
-            text = t
-            textSize = 16f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(cPinkDark)
-            setPadding(0, 0, 0, dp(10))
-        }
-    }
-
-    private fun field(label: String, child: View): View {
-        val wrap = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, dp(10))
-        }
-        val tv = TextView(this).apply {
-            text = label
-            textSize = 12.5f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(cTextLight)
-            setPadding(dp(4), 0, 0, dp(5))
-        }
-        wrap.addView(tv)
-        wrap.addView(child)
-        return wrap
-    }
-
-    private fun spacer(h: Int): View {
-        return View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, h
-            )
-        }
-    }
-
-    private fun lp() = LinearLayout.LayoutParams(
-        LinearLayout.LayoutParams.MATCH_PARENT,
-        LinearLayout.LayoutParams.WRAP_CONTENT
-    ).apply { topMargin = dp(8) }
-
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     // ─────────── 用量统计 ───────────
-
-    /** 可滑动模型列表弹窗：点选后回填模型输入框并立即保存 */
-    private fun showModelPicker(models: List<String>, target: EditText) {
-        android.app.AlertDialog.Builder(this)
-            .setTitle("选择模型（共 ${models.size} 个）")
-            .setItems(models.toTypedArray()) { _, which ->
-                val m = models[which]
-                target.setText(m)
-                settings.model = m
-                Toast.makeText(this, "已选择：$m", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
-
 
     private fun showStatsDialog() {
         val sb = StringBuilder()
@@ -775,11 +388,11 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
 
-        android.app.AlertDialog.Builder(this)
-            .setTitle("📈 用量统计")
+        Glass.builder(this)
+            .setTitle("用量统计")
             .setMessage(sb.toString())
             .setPositiveButton("关闭", null)
-            .show()
+            .showGlass()
     }
 
     // ─────────── 设置导出 / 导入 ───────────
@@ -819,7 +432,7 @@ class SettingsActivity : AppCompatActivity() {
             contentResolver.openOutputStream(uri)?.use { os ->
                 os.write(json.toByteArray(Charsets.UTF_8))
             }
-            Toast.makeText(this, "✅ 设置已导出", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "设置已导出", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Toast.makeText(this, "导出失败：${e.message}", Toast.LENGTH_LONG).show()
         } finally {
@@ -834,7 +447,7 @@ class SettingsActivity : AppCompatActivity() {
                 ins.readBytes().toString(Charsets.UTF_8)
             } ?: throw Exception("读不到文件内容")
             val result = backup.restoreFromJson(json)
-            Toast.makeText(this, "✅ $result，请重新打开页面刷新", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "$result，请重新打开页面刷新", Toast.LENGTH_LONG).show()
             // 重建页面以反映恢复的设置
             recreate()
         } catch (e: Exception) {
@@ -842,12 +455,12 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    // ─────────── 诊断（保留原逻辑） ───────────
+    // ─────────── 诊断 ───────────
 
     /** 诊断：列出所有可能产生悬浮窗的应用 + 已开启的无障碍服务 */
     private fun showDiagnosis() {
         val sb = StringBuilder()
-        sb.append("📋 已开启的无障碍服务：\n")
+        sb.append("已开启的无障碍服务：\n")
         val am = getSystemService(Context.ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager
         val enabled = am.getEnabledAccessibilityServiceList(
             android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK
@@ -861,7 +474,7 @@ class SettingsActivity : AppCompatActivity() {
             sb.append("\n")
         }
 
-        sb.append("⚠ 有\"悬浮窗权限\"的应用（可能挡道）：\n")
+        sb.append("有\"悬浮窗权限\"的应用（可能挡道）：\n")
         val overlayApps = mutableListOf<String>()
         val pm = packageManager
         @Suppress("DEPRECATION")
@@ -884,11 +497,11 @@ class SettingsActivity : AppCompatActivity() {
             overlayApps.forEach { sb.append(it).append("\n") }
         }
 
-        android.app.AlertDialog.Builder(this)
+        Glass.builder(this)
             .setTitle("无障碍开启诊断")
             .setMessage(sb.toString() + "\n\n操作建议：\n① 先把上面有悬浮窗权限的应用全部关闭（它们的悬浮窗会挡系统确认框）\n② 点\"开启无障碍服务\"直接开，出现确认框立刻点\"确定\"\n③ 成功后再回来开本应用的悬浮窗权限")
             .setPositiveButton("知道了", null)
-            .show()
+            .showGlass()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -904,6 +517,18 @@ class SettingsActivity : AppCompatActivity() {
             REQUEST_IMPORT -> {
                 if (resultCode == RESULT_OK) {
                     data?.data?.let { readBackupFromUri(it) }
+                }
+            }
+            REQUEST_PICK_WALLPAPER -> {
+                if (resultCode == RESULT_OK) {
+                    data?.data?.let { uri ->
+                        if (WallpaperStore.saveFrom(this, uri)) {
+                            Toast.makeText(this, "壁纸已应用", Toast.LENGTH_SHORT).show()
+                            recreate()
+                        } else {
+                            Toast.makeText(this, "壁纸保存失败，换张图试试", Toast.LENGTH_LONG).show()
+                        }
+                    }
                 }
             }
             else -> com.lelecz.reply.service.OcrManager

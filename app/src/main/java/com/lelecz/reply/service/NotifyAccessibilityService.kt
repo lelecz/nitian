@@ -228,7 +228,7 @@ class NotifyAccessibilityService : AccessibilityService() {
                         ReplyFloatService.show(
                             this@NotifyAccessibilityService,
                             currentLatest,
-                            listOf("⚠️ AI 没返回内容，试试刷新")
+                            listOf("AI 没返回内容，试试刷新")
                         )
                     }
                 }
@@ -238,7 +238,7 @@ class NotifyAccessibilityService : AccessibilityService() {
                     ReplyFloatService.show(
                         this@NotifyAccessibilityService,
                         currentLatest,
-                        listOf("⚠️ ${e.message?.take(50) ?: "AI 调用失败"} · 点刷新重试")
+                        listOf("${e.message?.take(50) ?: "AI 调用失败"} · 点刷新重试")
                     )
                 }
             }
@@ -262,7 +262,7 @@ class NotifyAccessibilityService : AccessibilityService() {
                         ReplyFloatService.show(
                             this@NotifyAccessibilityService,
                             currentLatest,
-                            listOf("⚠️ 刷新失败，模型没返回内容")
+                            listOf("刷新失败，模型没返回内容")
                         )
                     }
                 }
@@ -272,7 +272,7 @@ class NotifyAccessibilityService : AccessibilityService() {
                     ReplyFloatService.show(
                         this@NotifyAccessibilityService,
                         currentLatest,
-                        listOf("⚠️ ${e.message?.take(50) ?: "AI 调用失败"}")
+                        listOf("${e.message?.take(50) ?: "AI 调用失败"}")
                     )
                 }
             }

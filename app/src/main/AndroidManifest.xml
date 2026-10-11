@@ -18,8 +18,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ReReply">
 
+        <!-- 主页（启动入口） -->
         <activity
-            android:name=".ui.SettingsActivity"
+            android:name=".ui.HomeActivity"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>
@@ -27,6 +28,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- API 设置页 -->
+        <activity
+            android:name=".ui.ApiActivity"
+            android:exported="false" />
+
+        <!-- 应用设置页 -->
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false"
+            android:launchMode="singleTask" />
 
         <!-- 无障碍服务：读取群消息 + 模拟点击发送（无需 root / Shizuku） -->
         <service

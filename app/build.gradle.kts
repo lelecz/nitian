@@ -12,8 +12,8 @@ android {
         applicationId = "com.lelecz.reply"
         minSdk = 26          // 安卓 8.0
         targetSdk = 35
-        versionCode = 27
-        versionName = "1.6.0"
+        versionCode = 28
+        versionName = "1.7.0"
     }
 
     // 专属签名配置：debug 和 release 共用同一套签名，保证每次构建签名一致

@@ -149,7 +149,7 @@ class ReplyFloatService : Service() {
         replyArea.removeAllViews()
 
         if (replies.isEmpty()) {
-            replyArea.addView(makeReplyItem("⚠️ AI 生成失败，请检查 API Key / 网络", clickable = false))
+            replyArea.addView(makeReplyItem("AI 生成失败，请检查 API Key / 网络", clickable = false))
         } else {
             replies.forEach { r ->
                 replyArea.addView(makeReplyItem(r, clickable = true))
@@ -164,7 +164,7 @@ class ReplyFloatService : Service() {
         refreshBtn.setOnClickListener {
             val hasService = NotifyAccessibilityService.hasInstance()
             if (hasService) {
-                Toast.makeText(this, "🔄 重新生成中…", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "重新生成中…", Toast.LENGTH_SHORT).show()
                 NotifyAccessibilityService.refreshReplies()
             } else {
                 // 无障碍服务实例不存在：可能是被系统杀掉了还没恢复

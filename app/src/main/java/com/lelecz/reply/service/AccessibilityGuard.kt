@@ -77,9 +77,9 @@ object AccessibilityGuard {
 
             val frequentClose = lastCloseCount >= 3 && (now - firstCloseTime < 10 * 60_000)
             val title = if (frequentClose)
-                "⚠️ 无障碍频繁被关闭，请设置防清理！"
+                "无障碍频繁被关闭，请设置防清理！"
             else
-                "🛡️ 无障碍服务被系统关闭了"
+                "无障碍服务被系统关闭了"
             val content = if (frequentClose)
                 "10 分钟内已被关 $lastCloseCount 次，点我去设置防清理"
             else
@@ -158,9 +158,9 @@ object AccessibilityGuard {
                 append("② 电池 → 耗电管理 → 关闭「睡眠时自动清理耗电应用」\n")
                 append("③ 应用管理 → 本应用 → 权限 → 自启动 → 允许自启动\n")
                 append("④ 应用管理 → 本应用 → 权限 → 单项权限设置 → 开启「后台弹出界面」「常驻通知」\n")
-                append("⑤ 最近任务界面 → 下拉本应用卡片 → 点击「🔒」锁定\n")
+                append("⑤ 最近任务界面 → 下拉本应用卡片 → 点击「锁定」按钮\n")
                 append("⑥ 电池优化 → 选择「不优化」\n")
-                append("\n⚠ iQOO 15T 等新机型清理特别严格，请务必逐项检查！")
+                append("\n注意：iQOO 15T 等新机型清理特别严格，请务必逐项检查！")
             }
             isXiaomiRom() -> buildString {
                 append("小米/红米（MIUI/HyperOS）防清理设置：\n")
