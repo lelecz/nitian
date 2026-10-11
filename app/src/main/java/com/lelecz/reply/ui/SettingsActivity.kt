@@ -184,32 +184,91 @@ class SettingsActivity : AppCompatActivity() {
         card1.addView(presetScroll)
         card1.addView(spacer(dp(10)))
 
+        // 保存 + 拉取模型列表：并排一组
         val saveBtn = qBtn("💾 保存设置", true)
-        card1.addView(saveBtn, lp())
+        val fetchModelsBtn = qBtn("📋 拉取模型", false, true)
+        fetchModelsBtn.setOnClickListener {
+            // 用输入框当前值发请求（Key/URL 可能还没点保存）
+            settings.apiKey = keyInput.text.toString()
+            settings.baseUrl = urlInput.text.toString()
+            fetchModelsBtn.text = "⏳ 拉取中…"
+            fetchModelsBtn.isEnabled = false
+            CoroutineScope(Dispatchers.Main).launch {
+                try {
+                    val models = AiClient(settings).fetchModels()
+                    if (models.isEmpty()) {
+                        Toast.makeText(this@SettingsActivity, "接口返回了空列表", Toast.LENGTH_LONG).show()
+                    } else {
+                        showModelPicker(models, modelInput)
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(
+                        this@SettingsActivity,
+                        "拉取失败：${e.message?.take(80) ?: "未知错误"}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                fetchModelsBtn.text = "📋 拉取模型"
+                fetchModelsBtn.isEnabled = true
+            }
+        }
+        val saveRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        saveRow.addView(saveBtn, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        ).apply { marginEnd = dp(6) })
+        saveRow.addView(fetchModelsBtn, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        ))
+        card1.addView(saveRow, lp())
+
+        // 响应超时自定义（10~300 秒，步进 10，默认 60 = 原固定值）
+        card1.addView(spacer(dp(10)))
+        val timeoutLabel = TextView(this).apply {
+            text = "⏱ 响应超时：${settings.timeoutSec} 秒（10~300）"
+            textSize = 14f
+            setTextColor(cText)
+        }
+        card1.addView(timeoutLabel)
+        val timeoutBar = qSeekBar().apply {
+            max = 29
+            progress = (settings.timeoutSec / 10) - 1
+            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) {
+                    timeoutLabel.text = "⏱ 响应超时：${(p + 1) * 10} 秒（10~300）"
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+        }
+        card1.addView(timeoutBar, lp())
 
         val testBtn = qBtn("⚡ 测试 AI 连接", false)
         testBtn.setOnClickListener {
             settings.apiKey = keyInput.text.toString()
             settings.baseUrl = urlInput.text.toString()
             settings.model = modelInput.text.toString()
+            settings.timeoutSec = (timeoutBar.progress + 1) * 10
             testBtn.text = "⏳ 测试中…"
             testBtn.isEnabled = false
             CoroutineScope(Dispatchers.Main).launch {
+                val t0 = System.currentTimeMillis()
                 try {
                     val replies = AiClient(settings).generateReplies(
                         listOf("群友: 在吗"), "在吗"
                     )
+                    val cost = System.currentTimeMillis() - t0
                     if (replies.isEmpty()) {
-                        Toast.makeText(this@SettingsActivity, "连接成功，但模型没返回内容", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@SettingsActivity, "连接成功（延迟 ${cost}ms），但模型没返回内容", Toast.LENGTH_LONG).show()
                     } else {
                         Toast.makeText(
                             this@SettingsActivity,
-                            "🎉 连接成功！示例回复：${replies.first()}",
+                            "🎉 连接成功 · 延迟 ${cost}ms\n示例回复：${replies.first()}",
                             Toast.LENGTH_LONG
                         ).show()
                     }
                 } catch (e: Exception) {
-                    Toast.makeText(this@SettingsActivity, "失败：${e.message?.take(60)}", Toast.LENGTH_LONG).show()
+                    val cost = System.currentTimeMillis() - t0
+                    Toast.makeText(this@SettingsActivity, "失败（延迟 ${cost}ms）：${e.message?.take(60)}", Toast.LENGTH_LONG).show()
                 }
                 testBtn.text = "⚡ 测试 AI 连接"
                 testBtn.isEnabled = true
@@ -502,6 +561,7 @@ class SettingsActivity : AppCompatActivity() {
             settings.craziness = crazyBar.progress + 1
             settings.flirty = flirtyBar.progress + 1
             settings.toxic = toxicBar.progress + 1
+            settings.timeoutSec = (timeoutBar.progress + 1) * 10
             Toast.makeText(this, "✨ 已保存，喵~", Toast.LENGTH_SHORT).show()
         }
 
@@ -673,6 +733,21 @@ class SettingsActivity : AppCompatActivity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     // ─────────── 用量统计 ───────────
+
+    /** 可滑动模型列表弹窗：点选后回填模型输入框并立即保存 */
+    private fun showModelPicker(models: List<String>, target: EditText) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("选择模型（共 ${models.size} 个）")
+            .setItems(models.toTypedArray()) { _, which ->
+                val m = models[which]
+                target.setText(m)
+                settings.model = m
+                Toast.makeText(this, "已选择：$m", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
 
     private fun showStatsDialog() {
         val sb = StringBuilder()

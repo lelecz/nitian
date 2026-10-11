@@ -20,10 +20,16 @@ class AiClient(
     private val stats: com.lelecz.reply.data.StatsManager? = null
 ) {
 
-    private val client = OkHttpClient.Builder()
+    private val baseClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
+
+    /** 每次请求按当前设置套用响应超时（改设置后无需重启服务即生效） */
+    private fun http(): OkHttpClient =
+        baseClient.newBuilder()
+            .readTimeout(settings.timeoutSec.toLong(), TimeUnit.SECONDS)
+            .build()
 
     /** 生成建议回复列表，风格按 settings 的 craziness / flirty 调节 */
     suspend fun generateReplies(
@@ -63,7 +69,7 @@ class AiClient(
             .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
 
-        client.newCall(request).execute().use { resp ->
+        http().newCall(request).execute().use { resp ->
             if (!resp.isSuccessful) {
                 val errBody = resp.body?.string() ?: ""
                 // 限流/错误：抛给上层友好提示
@@ -72,6 +78,39 @@ class AiClient(
             val body = resp.body?.string() ?: ""
             android.util.Log.e("AiClient", "原始返回: ${body.take(500)}")
             parseReplies(body)
+        }
+    }
+
+    /**
+     * 拉取可用模型列表（OpenAI 兼容 GET {baseUrl}/models）。
+     * 设置页"拉取模型列表"按钮调用，返回模型 id 列表。
+     */
+    suspend fun fetchModels(): List<String> = withContext(Dispatchers.IO) {
+        val key = settings.apiKey
+        if (key.isBlank()) throw Exception("请先填写 API Key")
+        if (key.startsWith("http")) throw Exception("API Key 格式不对：应填密钥，不要填网址")
+
+        val url = settings.baseUrl.trimEnd('/') + "/models"
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $key")
+            .get()
+            .build()
+
+        http().newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                val errBody = resp.body?.string() ?: ""
+                throw Exception("HTTP ${resp.code}: ${errBody.take(120)}")
+            }
+            val body = resp.body?.string() ?: ""
+            val json = try { JSONObject(body) } catch (e: Exception) {
+                throw Exception("返回不是有效 JSON")
+            }
+            val arr = json.optJSONArray("data")
+                ?: throw Exception("返回中没有 data 字段（该服务商可能不支持 /models）")
+            (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.optString("id")?.takeIf { it.isNotBlank() }
+            }
         }
     }
 

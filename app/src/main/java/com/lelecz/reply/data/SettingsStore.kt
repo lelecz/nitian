@@ -49,6 +49,11 @@ class SettingsStore(context: Context) {
         get() = sp.getInt("toxic", 2)
         set(v) = sp.edit().putInt("toxic", v.coerceIn(1, 10)).apply()
 
+    /** 响应超时（秒）10~300，默认 60（与原固定值一致） */
+    var timeoutSec: Int
+        get() = sp.getInt("timeout_sec", 60)
+        set(v) = sp.edit().putInt("timeout_sec", v.coerceIn(10, 300)).apply()
+
     /** 人设包 id（normal/catgirl/yandere/brat/eagle） */
     var persona: String
         get() = sp.getString("persona", "normal") ?: "normal"

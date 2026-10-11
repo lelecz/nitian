@@ -1,6 +1,6 @@
 # 逆天回复
 
-> v1.5.0 · Android 8.0+ (API 26+) · Kotlin · 无需 Root · 无需 Shizuku
+> v1.6.0 · Android 8.0+ (API 26+) · Kotlin · 无需 Root · 无需 Shizuku
 
 一款基于 Android Accessibility Service 的群聊辅助工具：通过无障碍控件树实时读取 QQ / 微信 / 抖音 / 快手 的聊天上下文，接入任意 OpenAI 兼容接口生成多风格回复建议，以悬浮窗形式呈现，点击即可自动填入并发送。
 
@@ -110,6 +110,8 @@ ReplyFloatService 悬浮窗展示（WindowManager + SYSTEM_ALERT_WINDOW）
 | 悬浮窗交互 | WindowManager + SYSTEM_ALERT_WINDOW，支持拖动位置、点选发送、刷新、关闭 |
 | 自动发送 | 优先匹配屏幕底部 EditText 填入文本，匹配"发送/Send" 按钮点击；失败回退到回车坐标模拟 |
 | 手动模式 | autoSend = false 时仅复制到剪贴板，不触发点击 |
+| 模型列表拉取 | 设置页一键调用 `GET /models` 获取服务商可用模型，可滑动列表点选回填 |
+| 延迟显示 | 测试 AI 连接时显示往返延迟（毫秒），成功/失败均可看到 |
 
 ### 可调参数
 
@@ -119,6 +121,7 @@ ReplyFloatService 悬浮窗展示（WindowManager + SYSTEM_ALERT_WINDOW）
 | 软情趣 (flirty) | 1-10 | 从朋友距离到撩人天花板，控制暧昧浓度；有底线约束 |
 | 毒舌程度 (toxic) | 1-10 | 从纯夸不损到阴阳拉满；有底线约束，不人身攻击、不揭伤疤 |
 | 人设 (persona) | 15 个枚举值 | 覆盖 System Prompt 的角色覆盖，详见下方 |
+| 响应超时 (timeoutSec) | 10~300 秒（步进 10，默认 60） | 模型响应等待上限；连接超时固定 15 秒 |
 | autoSend | Boolean | 点选后自动发送 or 仅复制到剪贴板 |
 | groupFilter | String | 逗号分隔的群名关键词，仅匹配群聊触发 |
 
@@ -247,7 +250,7 @@ json.optJSONArray("choices")
 
 **1. 配置 AI 接口**
 
-打开应用 → 设置页 → 填写 Base URL / API Key / Model → 点"测试 AI 连接"验证。
+打开应用 → 设置页 → 填写 Base URL / API Key → 点「拉取模型」从列表中选择模型（也可手动输入）→ 点"测试 AI 连接"验证（会显示往返延迟）。
 
 **2. 开启无障碍服务**
 
@@ -362,6 +365,12 @@ Android 无障碍设置页不允许有任何悬浮窗覆盖。使用设置页"�
 ---
 
 ## 更新日志
+
+### v1.6.0
+- 新增模型列表拉取：设置页「拉取模型」调用 `GET {baseUrl}/models` 获取可用模型，可滑动列表点选回填
+- 测试 AI 连接显示往返延迟（成功/失败均显示延迟毫秒数）
+- 新增响应超时自定义：滑条 10~300 秒（步进 10），默认 60 秒与原固定值一致，后台服务改设置后即时生效
+- 「拉取模型」与「保存设置」并排一行
 
 ### v1.5.0
 - 新增人设包「喵露露」（《咸鱼喵喵》主角），人设总数达 15 个
