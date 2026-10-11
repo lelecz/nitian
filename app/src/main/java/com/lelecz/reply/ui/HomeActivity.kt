@@ -60,17 +60,6 @@ class HomeActivity : BaseActivity() {
         }
         card1.addView(permBtn, lp())
         container.addView(card1)
-
-        // ── 导航卡 ──
-        val card2 = card()
-        card2.addView(sectionTitle("功能"))
-        val apiBtn = qBtn("API 设置（Key / 模型 / 延迟测试）", false)
-        apiBtn.setOnClickListener { startActivity(Intent(this, ApiActivity::class.java)) }
-        card2.addView(apiBtn, lp())
-        val settingsBtn = qBtn("应用设置（风格 / 监听 / 权限 / 壁纸）", false)
-        settingsBtn.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
-        card2.addView(settingsBtn, lp())
-        container.addView(card2)
     }
 
     /** 总开关：改动立即写入生效（关闭时顺手收起悬浮窗） */

@@ -1,7 +1,12 @@
 package com.lelecz.reply.ui
 
 import android.app.Activity
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.animation.OvershootInterpolator
@@ -14,6 +19,9 @@ import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.lelecz.reply.R
 import com.lelecz.reply.data.WallpaperStore
 
@@ -34,20 +42,39 @@ open class BaseActivity : AppCompatActivity() {
     protected val cTextLight = 0xFF9B8A92.toInt()
     protected val cSection = 0xFFE86A92.toInt()
 
+    /** createPage 是否已执行（onResume 壁纸刷新判断用） */
+    private var pageReady = false
+    /** 建页时壁纸是否存在 */
+    private var wallpaperActive = false
+
     /**
-     * 页面骨架：FrameLayout（底层壁纸）+ ScrollView（默认渐变；有壁纸时透明）+ 内容容器。
+     * 页面骨架：
+     * - 边到边（状态栏透明），壁纸从屏幕最顶端铺到最底端
+     * - FrameLayout 底层壁纸 → 内容列（ScrollView + 底部导航栏）
      * 内部完成 setContentView。
      */
     protected fun createPage(): LinearLayout {
-        val frame = FrameLayout(this)
-        val hasWallpaper = WallpaperStore.exists(this)
-        val scroll = ScrollView(this).apply {
-            if (!hasWallpaper) {
+        // 边到边：状态栏透明，壁纸可覆盖状态栏区域
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            window.statusBarColor = Color.TRANSPARENT
+        }
+
+        val root = FrameLayout(this)
+        wallpaperActive = WallpaperStore.exists(this)
+
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            if (!wallpaperActive) {
+                // 无壁纸：默认渐变铺满全屏（含底部导航栏区域）
                 background = GradientDrawable(
                     GradientDrawable.Orientation.TL_BR,
                     intArrayOf(0xFFFFF0F5.toInt(), 0xFFF7F1FF.toInt(), 0xFFEFF6FF.toInt())
                 )
             }
+        }
+
+        val scroll = ScrollView(this).apply {
             overScrollMode = View.OVER_SCROLL_NEVER
         }
         val container = LinearLayout(this).apply {
@@ -55,16 +82,110 @@ open class BaseActivity : AppCompatActivity() {
             setPadding(dp(18), dp(22), dp(18), dp(44))
         }
         scroll.addView(container)
-        frame.addView(
+        column.addView(
             scroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+        )
+
+        // 底部导航栏（主页 / API / 设置）
+        val nav = buildBottomNav()
+        column.addView(
+            nav,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        root.addView(
+            column,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
-        setContentView(frame)
-        if (hasWallpaper) WallpaperStore.attach(this, frame)
+        setContentView(root)
+        if (wallpaperActive) WallpaperStore.attach(this, root)
+
+        // 系统栏 inset：内容避开状态栏，导航栏避开手势条/三键区
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            container.setPadding(dp(18), dp(22) + bars.top, dp(18), dp(44))
+            nav.setPadding(nav.paddingLeft, dp(8), nav.paddingRight, dp(10) + bars.bottom)
+            insets
+        }
+        // 浅色界面：状态栏/导航栏图标用深色
+        WindowCompat.getInsetsController(window, root).apply {
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
+        }
+        root.requestApplyInsets()
+
+        pageReady = true
         return container
+    }
+
+    /** 底部导航栏：三个 Tab，当前页高亮，点其他 Tab 切页 */
+    private fun buildBottomNav(): LinearLayout {
+        val currentTab = when (this) {
+            is ApiActivity -> 1
+            is SettingsActivity -> 2
+            else -> 0
+        }
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            elevation = dp(8).toFloat()
+            background = GradientDrawable().apply {
+                cornerRadii = floatArrayOf(
+                    dp(20).toFloat(), dp(20).toFloat(),
+                    dp(20).toFloat(), dp(20).toFloat(),
+                    0f, 0f, 0f, 0f
+                )
+                setColor(0xF2FFFFFF.toInt())
+            }
+        }
+        val tabs = listOf(
+            "主页" to HomeActivity::class.java,
+            "API" to ApiActivity::class.java,
+            "设置" to SettingsActivity::class.java
+        )
+        tabs.forEachIndexed { i, (label, target) ->
+            val selected = i == currentTab
+            val tab = TextView(this).apply {
+                text = label
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(11), dp(16), dp(11))
+                setTextColor(if (selected) cPinkDark else cTextLight)
+                if (selected) {
+                    typeface = Typeface.DEFAULT_BOLD
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(999).toFloat()
+                        setColor(0x2AF06E94)
+                    }
+                }
+                setOnClickListener {
+                    if (i != currentTab) {
+                        startActivity(Intent(this@BaseActivity, target))
+                        @Suppress("DEPRECATION")
+                        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+                    }
+                }
+            }
+            nav.addView(
+                tab,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            )
+        }
+        return nav
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 壁纸在别页被更换/清除 → 回到本页自动重建，避免背景停留在旧状态
+        if (pageReady && WallpaperStore.exists(this) != wallpaperActive) recreate()
     }
 
     /** 页面入场 Q 弹动画 */

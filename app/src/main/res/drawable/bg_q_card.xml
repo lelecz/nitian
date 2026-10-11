@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/mac_card" />
+    <!-- 半透明玻璃卡：壁纸可透出，顶部近白 → 底部淡紫 -->
+    <gradient
+        android:angle="270"
+        android:startColor="#C4FFFFFF"
+        android:endColor="#B3F3F0FF" />
     <corners android:radius="24dp" />
-    <stroke android:width="1.5dp" android:color="@color/mac_border" />
+    <stroke
+        android:width="1.5dp"
+        android:color="#B3FFD9E3" />
 </shape>
