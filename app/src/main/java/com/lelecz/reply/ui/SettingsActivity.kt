@@ -1,6 +1,8 @@
 package com.lelecz.reply.ui
 
 import android.content.Context
+import android.graphics.Typeface
+import android.view.Gravity
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
@@ -262,6 +264,10 @@ class SettingsActivity : BaseActivity() {
                 .showGlass()
         }
         card4.addView(crashBtn, lp())
+        val traceBtn = qBtn("管线诊断（看回复卡在哪一步）", false)
+        traceBtn.setOnClickListener { showTraceDialog() }
+        card4.addView(traceBtn, lp())
+
         container.addView(card4)
 
         // ── 卡片4：数据与备份 ──
@@ -362,35 +368,107 @@ class SettingsActivity : BaseActivity() {
 
     // ─────────── 用量统计 ───────────
 
-    private fun showStatsDialog() {
-        val sb = StringBuilder()
-        sb.append("今日回复：${stats.todayReplies()} 条\n")
-        sb.append("累计回复：${stats.totalReplies()} 条\n")
-        sb.append("累计 token：${"%,d".format(stats.totalTokensConsumed())}\n")
+    /** 把 n 向上取到漂亮的量程（5 / 10 / 20 / 50 × 10^k），给仪表盘做满刻度 */
+    private fun niceGaugeMax(n: Int): Float {
+        if (n <= 0) return 1000f
+        val v = n.toFloat()
+        val pow = Math.pow(10.0, Math.floor(Math.log10(v.toDouble()))).toFloat()
+        val normalized = v / pow   // 1~9.99
+        val head = when {
+            normalized <= 1f -> 1f
+            normalized <= 2f -> 2f
+            normalized <= 5f -> 5f
+            else -> 10f
+        }
+        return head * pow * 2f  // 量程留 2 倍余量，数据在 50% 左右不顶红线
+    }
 
-        // 最近 7 天条形图
-        sb.append("\n最近 7 天：\n")
-        val days = stats.recentDays(7)
-        val maxCount = (days.maxOfOrNull { it.second } ?: 0).coerceAtLeast(1)
-        days.forEach { (label, count) ->
-            val barLen = if (maxCount > 0) (count.toFloat() / maxCount * 10).toInt() else 0
-            val bar = "█".repeat(barLen)
-            sb.append(String.format("%s %3d %s\n", label, count, bar))
+    private fun showStatsDialog() {
+        val totalTokens = stats.totalTokensConsumed()
+        val totalReplies = stats.totalReplies()
+        val todayReplies = stats.todayReplies()
+
+        // 根布局
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(12))
         }
 
-        // 人设分布 top 5
+        // ── 仪表盘：token 用量 ──
+        val gauge = GaugeView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(200)
+            )
+            this.value = totalTokens.toFloat()
+            this.maxValue = niceGaugeMax(totalTokens)
+            this.centerText = String.format("%,d", totalTokens)
+            this.subText = "累计 token"
+        }
+        root.addView(gauge)
+
+        // ── 今日 / 累计 两小卡 ──
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val statCard = { label: String, value: Int ->
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(context).apply {
+                    text = String.format("%,d", value); textSize = 22f
+                    setTypeface(typeface, Typeface.BOLD); setTextColor(0xFF222222.toInt())
+                })
+                addView(TextView(context).apply {
+                    text = label; textSize = 12f; setTextColor(0xFF888888.toInt())
+                })
+            }
+        }
+        row.addView(statCard("今日回复", todayReplies))
+        row.addView(statCard("累计回复", totalReplies))
+        root.addView(row)
+
+        // ── 常用人设 top 5 ──
         val personaStats = stats.allPersonaStats().take(5)
         if (personaStats.isNotEmpty()) {
-            sb.append("\n常用人设：\n")
+            root.addView(TextView(this).apply {
+                text = "\n常用人设"; textSize = 13f
+                setTypeface(typeface, Typeface.BOLD); setTextColor(0xFF555555.toInt())
+            })
             personaStats.forEach { (id, count) ->
                 val p = Persona.fromId(id)
-                sb.append("${p.label}：$count 次\n")
+                root.addView(TextView(this).apply {
+                    text = "· ${p.label}  ·  $count 次"; textSize = 13f
+                    setTextColor(0xFF444444.toInt())
+                })
             }
         }
 
         Glass.builder(this)
             .setTitle("用量统计")
-            .setMessage(sb.toString())
+            .setView(root)
+            .setPositiveButton("关闭", null)
+            .showGlass()
+    }
+
+    // ─────────── 管线诊断 ───────────
+
+    /** 展示最近几次「事件 → 悬浮窗」链路的每步耗时，标出最慢一步 */
+    private fun showTraceDialog() {
+        val tv = TextView(this).apply {
+            text = com.lelecz.reply.service.PipelineTrace.formatReport()
+            textSize = 12f
+            setTextColor(0xFF444444.toInt())
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(dp(20), dp(10), dp(20), dp(10))
+            setLineSpacing(dp(4).toFloat(), 1f)
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(tv) }
+        Glass.builder(this)
+            .setTitle("管线诊断")
+            .setView(scroll)
             .setPositiveButton("关闭", null)
             .showGlass()
     }
