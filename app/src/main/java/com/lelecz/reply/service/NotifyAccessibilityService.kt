@@ -140,33 +140,45 @@ class NotifyAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 clearSendTargets()
                 // 系统设置/权限弹窗出现时自动收起悬浮窗（避免遮挡系统弹窗）
-                ReplyFloatService.autoHideIfSystemUi(event.packageName?.toString())
-                // 窗口切换：延迟 600ms 等界面稳定后读屏
-                scheduleRead(600)
+                val pkg = event.packageName?.toString()
+                ReplyFloatService.autoHideIfSystemUi(pkg)
+                // 窗口切换：延迟 600ms 等界面稳定后读屏（聊天/OCR 场景才记录管线）
+                val trace = pkg != null && (ScreenReader.isChatPackage(pkg) || OcrManager.isAuthorized())
+                scheduleRead(600, trace)
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 val pkg = event.packageName?.toString() ?: return
                 if (ScreenReader.isChatPackage(pkg)) {
                     // 聊天界面内容变化（新消息/滚动）：节流读取
-                    scheduleRead(800)
+                    scheduleRead(800, true)
                 }
             }
         }
     }
 
-    private fun scheduleRead(delayMs: Long) {
+    private fun scheduleRead(delayMs: Long, trace: Boolean = false) {
         val now = System.currentTimeMillis()
         if (now - lastTriggerTime < 1000) return  // 节流 1s
         readJob?.cancel()
+        val run = PipelineTrace.begin(trace)
         readJob = scope.launch {
             delay(delayMs)
-            readScreenAndTrigger()
+            run.mark("界面稳定等待")
+            if (run.isLive()) ReplyFloatService.showStatus(this@NotifyAccessibilityService, "读取控件树…")
+            readScreenAndTrigger(run)
         }
     }
 
-    /** 读屏 → 提取上下文 → 触发 AI */
-    private fun readScreenAndTrigger() {
-        val root = rootInActiveWindow ?: return
+    /** 读屏 → 提取上下文 → 触发 AI（run = 管线记录句柄） */
+    private fun readScreenAndTrigger(run: PipelineTrace.Handle) {
+        val root = rootInActiveWindow
+        if (root == null) {
+            run.note("拿不到根节点（窗口未就绪）")
+            run.finish()
+            return
+        }
+        run.mark("取根节点")
+        if (run.isLive()) ReplyFloatService.showStatus(this, "遍历控件树…")
         val snapshot = try {
             ScreenReader.readChat(root)
         } catch (_: Exception) {
@@ -174,42 +186,70 @@ class NotifyAccessibilityService : AccessibilityService() {
         } finally {
             try { root.recycle() } catch (_: Exception) {}
         }
+        run.mark("控件树遍历")
 
         if (snapshot != null) {
-            handleSnapshot(snapshot)
+            handleSnapshot(run, snapshot)
             return
         }
 
         // 控件树读不到 → OCR 兜底
         if (OcrManager.isAuthorized()) {
+            run.note("控件树读不到 → OCR 兜底")
+            if (run.isLive()) ReplyFloatService.showStatus(this, "控件树读不到，OCR 兜底中…")
             scope.launch {
                 try {
                     val lines = OcrManager.captureAndOcr(this@NotifyAccessibilityService)
                     if (!lines.isNullOrEmpty()) {
                         val latest = lines.last()
                         if (latest.isNotBlank()) {
+                            run.mark("OCR 截图识别")
                             handleSnapshot(
+                                run,
                                 ScreenReader.ChatSnapshot("ocr", lines.takeLast(10), latest)
                             )
+                        } else {
+                            run.note("OCR 没识别到文字")
+                            run.finish()
                         }
+                    } else {
+                        run.note("OCR 无结果")
+                        run.finish()
                     }
                 } catch (_: Throwable) {
                     // OCR 全流程已内部防崩，这里再兜一层，绝不闪退
+                    run.note("OCR 失败")
+                    run.finish()
                 }
             }
+        } else {
+            run.note("没有可读的聊天列表（当前应用不识别，OCR 未授权）")
+            run.finish()
         }
     }
 
-    private fun handleSnapshot(snap: ScreenReader.ChatSnapshot) {
+    private fun handleSnapshot(run: PipelineTrace.Handle, snap: ScreenReader.ChatSnapshot) {
         val latest = snap.latest
-        if (latest.isBlank() || latest.length > 200) return
+        if (latest.isBlank() || latest.length > 200) {
+            run.note("最新消息为空或过长，跳过")
+            run.finish()
+            return
+        }
 
         // 自己发送的过滤
-        if (latest == lastSentByUs) return
+        if (latest == lastSentByUs) {
+            run.note("是我们自己发的消息，跳过")
+            run.finish()
+            return
+        }
 
         // 去重：只比最新一条消息的内容（新消息来了最新一条肯定变）
         val hashKey = latest.hashCode().toString()
-        if (hashKey == lastContentHash) return
+        if (hashKey == lastContentHash) {
+            run.note("重复消息（内容没变），防抖")
+            run.finish()
+            return
+        }
         lastContentHash = hashKey
         lastTriggerTime = System.currentTimeMillis()
 
@@ -217,10 +257,15 @@ class NotifyAccessibilityService : AccessibilityService() {
         currentLatest = latest
         settings.lastChatPackage = snap.packageName
 
+        run.mark("过滤去重")
+        if (run.isLive()) ReplyFloatService.showStatus(this, "AI 生成中…")
+
         aiJob?.cancel()
         aiJob = scope.launch {
             try {
                 val replies = aiClient.generateReplies(currentContext, currentLatest)
+                run.mark("AI 生成")
+                run.finish()
                 mainHandler.post {
                     if (replies.isNotEmpty()) {
                         ReplyFloatService.show(this@NotifyAccessibilityService, currentLatest, replies)
@@ -233,6 +278,8 @@ class NotifyAccessibilityService : AccessibilityService() {
                     }
                 }
             } catch (e: Exception) {
+                run.note("AI 调用失败：${e.message?.take(60) ?: "未知错误"}")
+                run.finish()
                 if (e is CancellationException) return@launch // 正常取消（新消息覆盖），静默不显示
                 mainHandler.post {
                     ReplyFloatService.show(
@@ -251,10 +298,14 @@ class NotifyAccessibilityService : AccessibilityService() {
             ReplyFloatService.show(this, "还没有上下文", listOf("先等群里来消息再刷新"))
             return
         }
+        val run = PipelineTrace.begin()
+        if (run.isLive()) ReplyFloatService.showStatus(this, "重新生成中…")
         aiJob?.cancel()
         aiJob = scope.launch {
             try {
                 val replies = aiClient.generateReplies(currentContext, currentLatest)
+                run.mark("AI 生成")
+                run.finish()
                 mainHandler.post {
                     if (replies.isNotEmpty()) {
                         ReplyFloatService.show(this@NotifyAccessibilityService, currentLatest, replies)
@@ -267,6 +318,8 @@ class NotifyAccessibilityService : AccessibilityService() {
                     }
                 }
             } catch (e: Exception) {
+                run.note("AI 调用失败：${e.message?.take(60) ?: "未知错误"}")
+                run.finish()
                 if (e is CancellationException) return@launch // 正常取消，静默不显示
                 mainHandler.post {
                     ReplyFloatService.show(

@@ -33,6 +33,10 @@ class ReplyFloatService : Service() {
     private var autoHideJob: Runnable? = null
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    /** 当前悬浮内容是否为管线状态胶囊（区别于完整回复气泡） */
+    private var isStatusView = false
+    private var statusTv: TextView? = null
+
     companion object {
         const val ACTION_SHOW = "com.lelecz.reply.SHOW"
         const val ACTION_HIDE = "com.lelecz.reply.HIDE"
@@ -59,6 +63,15 @@ class ReplyFloatService : Service() {
 
         fun hide(context: Context) {
             context.startService(Intent(context, ReplyFloatService::class.java).setAction(ACTION_HIDE))
+        }
+
+        /**
+         * 管线状态行：处理过程中显示小玻璃胶囊（读屏中 / AI 生成中…），
+         * 回复气泡弹出时自动被替换。服务未运行时静默忽略。
+         */
+        fun showStatus(context: Context, text: String) {
+            val s = instance ?: return
+            s.mainHandler.post { s.showStatusBubble(text) }
         }
 
         /** 前台是系统设置/权限弹窗时自动收起气泡，避免遮挡 */
@@ -128,6 +141,54 @@ class ReplyFloatService : Service() {
             .setOngoing(true)
             .build()
         startForeground(1, notification)
+    }
+
+    /** 管线状态胶囊：轻量小窗，透明穿透点击，回复气泡弹出时被替换 */
+    private fun showStatusBubble(text: String) {
+        // 已经是状态胶囊 → 只更新文字（避免反复 add/remove 闪动）
+        if (floatView != null && isStatusView) {
+            statusTv?.text = "· $text"
+            return
+        }
+        hideBubble()
+
+        val tv = TextView(this).apply {
+            this.text = "· $text"
+            textSize = 13f
+            setTextColor(0xFF5A4A52.toInt())
+            setPadding(40, 26, 40, 26)
+            setBackgroundResource(R.drawable.bg_glass_dialog)
+        }
+
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else WindowManager.LayoutParams.TYPE_PHONE
+
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, // 点击穿透，不挡聊天操作
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 40
+            y = 160
+        }
+
+        floatView = tv
+        layoutParams = lp
+        isStatusView = true
+        statusTv = tv
+        try { wm.addView(tv, lp) } catch (_: Exception) {}
+
+        // 15 秒没走到回复（AI 卡死）自动收起，绝不残留
+        autoHideJob?.let { mainHandler.removeCallbacks(it) }
+        val job = Runnable { hideBubble() }
+        autoHideJob = job
+        mainHandler.postDelayed(job, 15_000)
     }
 
     private fun showBubble(lastMsg: String, replies: List<String>) {
@@ -280,6 +341,8 @@ class ReplyFloatService : Service() {
             try { wm.removeView(it) } catch (_: Exception) {}
         }
         floatView = null
+        isStatusView = false
+        statusTv = null
     }
 
     override fun onDestroy() {
