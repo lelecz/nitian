@@ -50,7 +50,8 @@ class AiClient(
             toxic = settings.toxic,
             persona = Persona.fromId(settings.persona),
             chatContext = chatContext,
-            lastMessage = lastMessage
+            lastMessage = lastMessage,
+            unlocked = settings.contentUnlocked
         )
 
         val payload = JSONObject()
@@ -177,7 +178,7 @@ data class BuiltPrompt(val system: String, val user: String)
  */
 object PromptBuilder {
 
-    fun build(craziness: Int, flirty: Int, toxic: Int = 2, persona: Persona = Persona.NORMAL, chatContext: List<String>, lastMessage: String): BuiltPrompt {
+    fun build(craziness: Int, flirty: Int, toxic: Int = 2, persona: Persona = Persona.NORMAL, chatContext: List<String>, lastMessage: String, unlocked: Boolean = false): BuiltPrompt {
         val crazy = craziness.coerceIn(1, 5)
         val flirt = flirty.coerceIn(1, 10)
         val tox = toxic.coerceIn(1, 10)
@@ -191,7 +192,10 @@ object PromptBuilder {
             else -> "极致抽象：思维完全逆天，用最离谱的联想回答最普通的问题，梗密度拉满，令人蚌埠住。"
         }
 
-        // 软情趣等级描述（1~10）
+        // 18R 生效条件：管理员密码已解锁 且 软情趣拉满 10 级（显式状态，UI 有 18R状态 行同步显示）
+        val r18 = unlocked && flirt == 10
+
+        // 软情趣等级描述（1~10）；只有 10 级 + 解锁才切露骨
         val flirtDesc = when (flirt) {
             1 -> "保持正常朋友距离，不暧昧。"
             2 -> "语气亲切，偶尔撒娇。"
@@ -200,9 +204,12 @@ object PromptBuilder {
             5 -> "暧昧浓度再升一档：主动撩拨、俏皮挑逗，半真半假地开撩。"
             6 -> "大胆示好：甜腻腻地撒娇、若即若离的试探，把对方撩得心痒。"
             7 -> "挑逗升级：带暗示的双关、坏笑着逗弄，让对话充满来电感。"
-            8 -> "火花四溅：用俏皮又露骨的双关和暧昧挑逗步步紧逼，氛围感拉满。"
+            8 -> "火花四溅：用俏皮又带点露骨的双关和暧昧挑逗步步紧逼，氛围感拉满。"
             9 -> "极致撩拨：几乎明示的暧昧挑逗、带诱惑意味的暗示，只差捅破窗户纸。"
-            else -> "撩人天花板：挑逗、撩拨、暧昧暗示全开，字字带着电流，让人招架不住。"
+            else -> if (r18)
+                "18R 露骨模式：性暗示直白、成人向拉满，大胆露骨地撩拨挑逗，火力全开。"
+            else
+                "撩人天花板：挑逗、撩拨、暧昧暗示全开，字字带着电流，让人招架不住。"
         }
 
         // 毒舌等级描述（1~10）
@@ -221,6 +228,12 @@ object PromptBuilder {
 
         val personaAppend = if (persona.systemAppend.isNotBlank()) "\n\n${persona.systemAppend}" else ""
 
+        // 第 7 条 = 内容尺度总闸：18R 生效（解锁+10级）才放开，否则维持软限制
+        val rule7 = if (r18)
+            "7. 暧昧挑逗允许大胆露骨、成人向（18R）；硬底线：不人身攻击、不揭伤疤、不骂脏话、不涉及真实人物与违法内容。$personaAppend"
+        else
+            "7. 暧昧挑逗要含蓄风趣有分寸，绝不低俗下流，不做露骨描写；毒舌也要有底线，不人身攻击、不揭伤疤、不骂脏话。$personaAppend"
+
         val system = """
             你是一个群聊气氛组高手，平时在朋友的群里聊天。你的任务是：对群里最新一条消息，给出【3条】可以直接发送的回复建议。
             要求：
@@ -230,7 +243,7 @@ object PromptBuilder {
             4. 每条回复不超过 40 字，口语化，像真人打字，不要有"作为AI""好的呢"这类机器感。
             5. 不要客套、不要解释，直接给 3 条回复，每条一行。
             6. 适当使用 emoji，但不要每个都用。
-            7. 暧昧挑逗要含蓄风趣有分寸，绝不低俗下流，不做露骨描写；毒舌也要有底线，不人身攻击、不揭伤疤、不骂脏话。$personaAppend
+            $rule7
         """.trimIndent()
 
         val user = buildString {

@@ -143,14 +143,17 @@ class ReplyFloatService : Service() {
         startForeground(1, notification)
     }
 
-    /** 管线状态胶囊：轻量小窗，透明穿透点击，回复气泡弹出时被替换 */
+    /** 管线状态胶囊：只在没有回复气泡时显示，绝不覆盖/吃掉已有气泡 */
     private fun showStatusBubble(text: String) {
-        // 已经是状态胶囊 → 只更新文字（避免反复 add/remove 闪动）
         if (floatView != null && isStatusView) {
+            // 已是状态胶囊 → 只更新文字（避免反复 add/remove 闪动）
             statusTv?.text = "· $text"
             return
         }
-        hideBubble()
+        if (floatView != null) {
+            // 完整回复气泡在屏上 → 静默忽略状态更新，回复优先
+            return
+        }
 
         val tv = TextView(this).apply {
             this.text = "· $text"

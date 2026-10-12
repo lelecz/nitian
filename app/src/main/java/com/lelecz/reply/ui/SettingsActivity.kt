@@ -6,6 +6,7 @@ import android.view.Gravity
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputType
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -90,7 +91,35 @@ class SettingsActivity : BaseActivity() {
         card2.addView(sectionTitle("回复风格"))
 
         val crazyBar = sliderRow(card2, "抽象逆天程度", 4, settings.craziness - 1) { "${it + 1} / 5" }
-        val flirtyBar = sliderRow(card2, "软情趣程度", 9, settings.flirty - 1) { "${it + 1} / 10" }
+
+        // ── 18R 状态行：解锁状态 × 当前档位，露骨是否生效一眼可见 ──
+        fun r18Text(lvl: Int): String = when {
+            !settings.contentUnlocked -> "未解锁"
+            lvl < 10 -> "已解锁 · 未生效"
+            else -> "已解锁 · 露骨生效中"
+        }
+        val r18Value = TextView(this).apply {
+            text = r18Text(settings.flirty)
+            textSize = 14f
+            setTextColor(cPinkDark)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.END
+        }
+        val r18Row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(TextView(this@SettingsActivity).apply {
+                text = "18R状态"
+                textSize = 14f
+                setTextColor(cText)
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(r18Value, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }
+
+        val flirtyBar = sliderRow(card2, "软情趣程度", 9, settings.flirty - 1) { p ->
+            r18Value.text = r18Text(p + 1)
+            "${p + 1} / 10"
+        }
+        card2.addView(r18Row) // 拖动软情趣滑条时状态行实时刷新
         val toxicBar = sliderRow(card2, "毒舌程度", 9, settings.toxic - 1) { "${it + 1} / 10" }
 
         // ── 人设包选择 ──
@@ -269,6 +298,27 @@ class SettingsActivity : BaseActivity() {
         card4.addView(traceBtn, lp())
 
         container.addView(card4)
+
+        // ── 内容分级（18+ 管理员密码解锁） ──
+        val cardC = card()
+        cardC.addView(sectionTitle("内容分级"))
+        val levelStatus = TextView(this).apply {
+            text = if (settings.contentUnlocked)
+                "18+ 已解锁（管理员密码）· 软情趣拉满 10 级即切换露骨"
+            else
+                "18+ 成人向内容 · 已锁定，解锁需管理员密码"
+            textSize = 12f
+            setTextColor(cTextLight)
+            setPadding(0, 0, 0, dp(8))
+        }
+        cardC.addView(levelStatus)
+        val unlockBtn = qBtn(
+            if (settings.contentUnlocked) "撤销 18+ 解锁" else "输入管理员密码解锁 18+",
+            false
+        )
+        unlockBtn.setOnClickListener { showUnlockDialog() }
+        cardC.addView(unlockBtn, lp())
+        container.addView(cardC)
 
         // ── 卡片4：数据与备份 ──
         val card5 = card()
@@ -473,6 +523,66 @@ class SettingsActivity : BaseActivity() {
             .showGlass()
     }
 
+    // ─────────── 内容分级（管理员密码） ───────────
+
+    private fun showUnlockDialog() {
+        // 已解锁 → 走撤销确认
+        if (settings.contentUnlocked) {
+            Glass.builder(this)
+                .setTitle("撤销 18+ 解锁")
+                .setMessage("将恢复默认内容尺度，随时可再次解锁。")
+                .setPositiveButton("撤销") { _, _ ->
+                    settings.contentUnlocked = false
+                    Toast.makeText(this, "已恢复默认内容尺度", Toast.LENGTH_SHORT).show()
+                    recreate()
+                }
+                .setNegativeButton("取消", null)
+                .showGlass()
+            return
+        }
+
+        if (com.lelecz.reply.data.AdminGate.isLocked()) {
+            Toast.makeText(
+                this,
+                "输错次数过多，请 ${com.lelecz.reply.data.AdminGate.remainingLockSec()} 秒后再试",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        val input = EditText(this).apply {
+            hint = "管理员密码"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setTextColor(0xFF444444.toInt())
+        }
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), 0)
+            addView(input)
+        }
+        Glass.builder(this)
+            .setTitle("解锁 18+ 内容")
+            .setMessage("解锁后回复风格将放开成人向尺度（18+），仅限成年人使用；可随时撤销。")
+            .setView(wrap)
+            .setPositiveButton("解锁") { _, _ ->
+                if (com.lelecz.reply.data.AdminGate.check(input.text.toString())) {
+                    settings.contentUnlocked = true
+                    Toast.makeText(this, "18+ 内容已解锁", Toast.LENGTH_SHORT).show()
+                    recreate()
+                } else if (com.lelecz.reply.data.AdminGate.isLocked()) {
+                    Toast.makeText(
+                        this,
+                        "连续输错，已锁定 ${com.lelecz.reply.data.AdminGate.remainingLockSec()} 秒",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    Toast.makeText(this, "密码不对", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .showGlass()
+    }
+
     // ─────────── 设置导出 / 导入 ───────────
 
     private fun startExport() {
@@ -610,7 +720,7 @@ class SettingsActivity : BaseActivity() {
                 }
             }
             else -> com.lelecz.reply.service.OcrManager
-                .onActivityResult(requestCode, resultCode, data)
+                .onActivityResult(this, requestCode, resultCode, data)
         }
     }
 }

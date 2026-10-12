@@ -74,13 +74,20 @@ class SettingsStore(context: Context) {
         get() = sp.getString("last_chat_pkg", "") ?: ""
         set(v) = sp.edit().putString("last_chat_pkg", v).apply()
 
+    /** 18+ 内容已用管理员密码解锁 */
+    var contentUnlocked: Boolean
+        get() = sp.getBoolean("content_unlocked", false)
+        set(v) = sp.edit().putBoolean("content_unlocked", v).apply()
+
     /** 导出全部设置为 Map（用于备份） */
     fun exportAll(): Map<String, Any?> = sp.all
 
-    /** 从 Map 导入设置（合并写入） */
+    /** 从 Map 导入设置（合并写入）；保护项拒绝导入覆盖，防止伪造备份绕过密码门 */
     fun importAll(data: Map<String, Any?>) {
+        val protect = setOf("content_unlocked")
         val ed = sp.edit()
         data.forEach { (k, v) ->
+            if (k in protect) return@forEach
             when (v) {
                 is String -> ed.putString(k, v)
                 is Int -> ed.putInt(k, v)

@@ -56,8 +56,9 @@ class NotifyAccessibilityService : AccessibilityService() {
     private var currentContext: List<String> = emptyList()
     private var currentLatest: String = ""
 
-    /** 我们自己发送的最后一条（用于过滤，避免自己触发自己） */
+    /** 我们自己发送的最后一条（3 秒内完全相等则过滤，避免安卓 10 发完立刻触发的事件被误拦；超 3 秒同内容的消息视为群友真来了） */
     private var lastSentByUs: String = ""
+    private var lastSentTime: Long = 0L
 
     private var lastEditNode: AccessibilityNodeInfo? = null
     private var lastSendNode: AccessibilityNodeInfo? = null
@@ -213,7 +214,7 @@ class NotifyAccessibilityService : AccessibilityService() {
                             run.finish()
                         }
                     } else {
-                        run.note("OCR 无结果")
+                        run.note("OCR 无结果（${OcrManager.lastSkip ?: "截图失败或授权失效，去设置页重新授权"}）")
                         run.finish()
                     }
                 } catch (_: Throwable) {
@@ -236,9 +237,9 @@ class NotifyAccessibilityService : AccessibilityService() {
             return
         }
 
-        // 自己发送的过滤
-        if (latest == lastSentByUs) {
-            run.note("是我们自己发的消息，跳过")
+        // 自己发送的过滤：3 秒内完全相等才视为"刚发完立刻触发"的噪音事件
+        if (latest == lastSentByUs && System.currentTimeMillis() - lastSentTime < 3000) {
+            run.note("自己刚发的消息，过滤")
             run.finish()
             return
         }
@@ -392,7 +393,7 @@ class NotifyAccessibilityService : AccessibilityService() {
 
     private fun doSend(text: String) {
         lastSentByUs = text
-        // 记录一次回复（发送或复制都算）
+        lastSentTime = System.currentTimeMillis()
         stats.recordReply(settings.persona)
         if (!settings.autoSend) {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -403,6 +404,9 @@ class NotifyAccessibilityService : AccessibilityService() {
             return
         }
 
+        // 实际发送成功的内容标记为"已处理"：之后它作为屏幕最新消息出现时，
+        // 去重会永久拦住（否则 3 秒窗口过后会再次触发 AI，造成自回复循环）
+        lastContentHash = text.hashCode().toString()
         mainHandler.post { tryAutoSend(text) }
     }
 

@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -68,6 +69,13 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="悬浮窗快捷回复" />
         </service>
+
+        <!-- OCR 截屏专用前台服务（Android 14+ 截屏前必须存在 mediaProjection 类型 FGS） -->
+        <service
+            android:name=".service.OcrProjectionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection"
+            android:label="屏幕识别" />
 
         <receiver
             android:name=".service.BootReceiver"

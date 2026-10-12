@@ -31,8 +31,11 @@ class BackupManager(
             SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(Date()))
 
         // 设置
+        // 解锁状态不进备份：18+ 必须每台设备各自用管理员密码验证，不能被备份带过去
+        val exclude = setOf("content_unlocked")
         val settingsJson = JSONObject()
         settings.exportAll().forEach { (k, v) ->
+            if (k in exclude) return@forEach
             when (v) {
                 null -> settingsJson.put(k, JSONObject.NULL)
                 is String -> settingsJson.put(k, v)
