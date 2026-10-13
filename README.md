@@ -322,18 +322,29 @@ app/src/main/java/com/lelecz/reply/
 
 ### 签名
 
-项目内置 `release.keystore`，debug 与 release 构建共用同一套签名，覆盖安装不提示签名不一致。
+debug 与 release 构建共用同一套签名，覆盖安装不提示签名不一致。**明文 keystore 不在仓库中**，仓库只保存加密版 `release.keystore.enc`（OpenSSL AES-256-CBC + PBKDF2）。
 
 | 项 | 值 |
 |---|---|
-| 签名文件 | `release.keystore`（项目根目录） |
+| 签名文件 | `release.keystore`（仅本机，已被 gitignore） |
+| 仓库内备份 | `release.keystore.enc`（加密版） |
 | Alias | `rereply` |
-| Store Key 密码 | `[REMOVED]` |
-| 算法 | RSA 2048 + SHA256 |
+| 算法 | RSA 2048 + SHA256（V1/V2/V3 签名方案） |
 | 有效期 | 36500 天 |
 | SHA256 指纹 | `C0:62:BF:98:CC:DF:79:7E:CD:76:0F:58:80:10:9F:FD:8E:A2:EF:50:9D:E7:62:3D:41:CB:C8:E2:40:72:20:16` |
 
-> 公开仓库中的签名文件存在安全风险，仅限个人 / 非商用使用。上架应用商店请自行重新生成并妥善保管。
+**本机构建**：直接 `./sign_and_build.sh`——本地已有明文 keystore 就直接用；没有则自动从 `.enc` 解密后构建并验签。
+
+**手动恢复密钥库**：
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 \
+  -in release.keystore.enc -out release.keystore
+```
+
+解密口令与构建签名口令不公开，联系作者获取。
+
+> 历史版本（v1.8.0 及更早）曾将签名文件与口令直接提交在仓库中，该凭据已作废重置；请拉取最新代码构建。上架应用商店请自行重新生成并妥善保管签名。
 
 ---
 
@@ -416,7 +427,7 @@ Android 无障碍设置页不允许有任何悬浮窗覆盖。使用设置页"�
 - 无障碍服务升级为前台服务，降低后台被杀概率
 - 新增 PARTIAL_WAKE_LOCK 防 Doze
 - 守护检测升级为 500ms / 2s / 5s / 10s 四重递进
-- 内置专属签名文件 `release.keystore`
+- 首次引入项目专属签名
 - Manifest 声明 `foregroundServiceType="specialUse"` 合规
 
 ### v1.1.8
