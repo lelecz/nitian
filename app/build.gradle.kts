@@ -17,12 +17,15 @@ android {
     }
 
     // 专属签名配置：debug 和 release 共用同一套签名，保证每次构建签名一致
+    // keystore 明文只在本机（gitignore）；仓库里是加密版 release.keystore.enc
+    // 丢失时解密：openssl enc -d -aes-256-cbc -pbkdf2 -in release.keystore.enc -out release.keystore
     signingConfigs {
         create("release") {
             storeFile = file("../release.keystore")
-            storePassword = "[REMOVED]"
+            storePassword = "lelecz"
             keyAlias = "rereply"
-            keyPassword = "[REMOVED]"
+            keyPassword = "lelecz"
+            enableV3Signing = true
         }
     }
 
