@@ -69,6 +69,15 @@ class SettingsStore(context: Context) {
         get() = sp.getBoolean("auto_send", true)
         set(v) = sp.edit().putBoolean("auto_send", v).apply()
 
+    /**
+     * 关闭消息防抖（敏感模式，管理员密码解锁）：
+     * false=防抖开启（默认，触发节流 1s + 重复内容永不触发）
+     * true=防抖关闭（触发节流 200ms/稳定等待 300ms，重复内容 5 秒冷却后可再触发）
+     */
+    var noDebounce: Boolean
+        get() = sp.getBoolean("no_debounce", false)
+        set(v) = sp.edit().putBoolean("no_debounce", v).apply()
+
     /** 当前正在回复的会话包名（如 com.tencent.mobileqq） */
     var lastChatPackage: String
         get() = sp.getString("last_chat_pkg", "") ?: ""

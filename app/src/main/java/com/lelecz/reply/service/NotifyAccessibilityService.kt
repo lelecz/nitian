@@ -143,15 +143,15 @@ class NotifyAccessibilityService : AccessibilityService() {
                 // 系统设置/权限弹窗出现时自动收起悬浮窗（避免遮挡系统弹窗）
                 val pkg = event.packageName?.toString()
                 ReplyFloatService.autoHideIfSystemUi(pkg)
-                // 窗口切换：延迟 600ms 等界面稳定后读屏（聊天/OCR 场景才记录管线）
+                // 窗口切换：延迟等界面稳定后读屏（敏感模式 300ms，默认 600ms）
                 val trace = pkg != null && (ScreenReader.isChatPackage(pkg) || OcrManager.isAuthorized())
-                scheduleRead(600, trace)
+                scheduleRead(if (settings.noDebounce) 300L else 600L, trace)
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 val pkg = event.packageName?.toString() ?: return
                 if (ScreenReader.isChatPackage(pkg)) {
-                    // 聊天界面内容变化（新消息/滚动）：节流读取
-                    scheduleRead(800, true)
+                    // 聊天界面内容变化（新消息/滚动）：敏感模式 300ms，默认 800ms
+                    scheduleRead(if (settings.noDebounce) 300L else 800L, true)
                 }
             }
         }
@@ -159,7 +159,9 @@ class NotifyAccessibilityService : AccessibilityService() {
 
     private fun scheduleRead(delayMs: Long, trace: Boolean = false) {
         val now = System.currentTimeMillis()
-        if (now - lastTriggerTime < 1000) return  // 节流 1s
+        // 敏感模式（关闭防抖）下节流 200ms，默认 1s
+        val throttleMs = if (settings.noDebounce) 200L else 1000L
+        if (now - lastTriggerTime < throttleMs) return
         readJob?.cancel()
         val run = PipelineTrace.begin(trace)
         readJob = scope.launch {
@@ -230,12 +232,15 @@ class NotifyAccessibilityService : AccessibilityService() {
     }
 
     private fun handleSnapshot(run: PipelineTrace.Handle, snap: ScreenReader.ChatSnapshot) {
-        val latest = snap.latest
-        if (latest.isBlank() || latest.length > 200) {
-            run.note("最新消息为空或过长，跳过")
+        val raw = snap.latest
+        if (raw.isBlank()) {
+            run.note("最新消息为空，跳过")
             run.finish()
             return
         }
+        // 超长消息截断到 200 字继续生成，而不是整条丢弃（对方发小作文也能出建议）
+        val latest = if (raw.length > 200) raw.take(200) else raw
+        if (raw.length > 200) run.note("消息超长(${raw.length}字)，截断到200字继续")
 
         // 自己发送的过滤：3 秒内完全相等才视为"刚发完立刻触发"的噪音事件
         if (latest == lastSentByUs && System.currentTimeMillis() - lastSentTime < 3000) {
@@ -247,9 +252,19 @@ class NotifyAccessibilityService : AccessibilityService() {
         // 去重：只比最新一条消息的内容（新消息来了最新一条肯定变）
         val hashKey = latest.hashCode().toString()
         if (hashKey == lastContentHash) {
-            run.note("重复消息（内容没变），防抖")
-            run.finish()
-            return
+            if (!settings.noDebounce) {
+                run.note("重复消息（内容没变），防抖")
+                run.finish()
+                return
+            }
+            // 敏感模式：同内容 5 秒冷却——挡界面抖动（光标闪烁等）反复烧 API，
+            // 冷却过了允许同内容再次触发（群友连发相同的字也能逐条回复）
+            if (System.currentTimeMillis() - lastTriggerTime < 5000) {
+                run.note("敏感模式：同内容 5 秒冷却中")
+                run.finish()
+                return
+            }
+            run.note("敏感模式：冷却结束，同内容再次触发")
         }
         lastContentHash = hashKey
         lastTriggerTime = System.currentTimeMillis()

@@ -183,6 +183,27 @@ class SettingsActivity : BaseActivity() {
         card3.addView(field("发送方式", autoSendSwitch))
         container.addView(card3)
 
+        // ── 消息防抖（管理员密码锁，参考 18R 锁：状态行 + 按钮） ──
+        val cardD = card()
+        cardD.addView(sectionTitle("消息防抖"))
+        val debounceStatus = TextView(this).apply {
+            text = if (settings.noDebounce)
+                "防抖已关闭（管理员密码）· 敏感模式：消息来了就触发（同内容 5 秒冷却）"
+            else
+                "防抖已开启 · 重复/邻近消息不会重复触发（推荐）"
+            textSize = 12f
+            setTextColor(cTextLight)
+            setPadding(0, 0, 0, dp(8))
+        }
+        cardD.addView(debounceStatus)
+        val debounceBtn = qBtn(
+            if (settings.noDebounce) "恢复消息防抖" else "输入管理员密码关闭防抖",
+            false
+        )
+        debounceBtn.setOnClickListener { showDebounceDialog() }
+        cardD.addView(debounceBtn, lp())
+        container.addView(cardD)
+
         // ── 卡片3：权限与工具 ──
         val card4 = card()
         card4.addView(sectionTitle("权限与工具"))
@@ -568,6 +589,68 @@ class SettingsActivity : BaseActivity() {
                 if (com.lelecz.reply.data.AdminGate.check(input.text.toString())) {
                     settings.contentUnlocked = true
                     Toast.makeText(this, "18+ 内容已解锁", Toast.LENGTH_SHORT).show()
+                    recreate()
+                } else if (com.lelecz.reply.data.AdminGate.isLocked()) {
+                    Toast.makeText(
+                        this,
+                        "连续输错，已锁定 ${com.lelecz.reply.data.AdminGate.remainingLockSec()} 秒",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    Toast.makeText(this, "密码不对", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .showGlass()
+    }
+
+    /** 消息防抖开关（管理员密码锁，逻辑同 18R 解锁） */
+    private fun showDebounceDialog() {
+        // 已关闭防抖 → 恢复（安全方向，确认即可）
+        if (settings.noDebounce) {
+            Glass.builder(this)
+                .setTitle("恢复消息防抖")
+                .setMessage("将恢复默认防抖：重复/邻近消息不会重复触发，更省 API 额度。")
+                .setPositiveButton("恢复") { _, _ ->
+                    settings.noDebounce = false
+                    Toast.makeText(this, "已恢复消息防抖", Toast.LENGTH_SHORT).show()
+                    recreate()
+                }
+                .setNegativeButton("取消", null)
+                .showGlass()
+            return
+        }
+
+        if (com.lelecz.reply.data.AdminGate.isLocked()) {
+            Toast.makeText(
+                this,
+                "输错次数过多，请 ${com.lelecz.reply.data.AdminGate.remainingLockSec()} 秒后再试",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        val input = EditText(this).apply {
+            hint = "管理员密码"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setTextColor(0xFF444444.toInt())
+        }
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), 0)
+            addView(input)
+        }
+        Glass.builder(this)
+            .setTitle("关闭消息防抖")
+            .setMessage(
+                "关闭后重复/邻近消息也会触发 AI 回复（更灵敏），" +
+                    "群里刷屏会多耗 API 额度；同内容保留 5 秒冷却兜底。可随时恢复。"
+            )
+            .setView(wrap)
+            .setPositiveButton("确认关闭") { _, _ ->
+                if (com.lelecz.reply.data.AdminGate.check(input.text.toString())) {
+                    settings.noDebounce = true
+                    Toast.makeText(this, "防抖已关闭（敏感模式）", Toast.LENGTH_SHORT).show()
                     recreate()
                 } else if (com.lelecz.reply.data.AdminGate.isLocked()) {
                     Toast.makeText(
